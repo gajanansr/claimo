@@ -172,13 +172,13 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
                   <TableCell className="text-right pr-5 py-3">
                     <button
                       className={`h-5 w-5 rounded border transition-all inline-flex items-center justify-center
-                        ${ride.reviewed
+                        ${Boolean(ride.reviewed)
                           ? "bg-emerald-500/10 border-emerald-700 text-emerald-500"
                           : "border-zinc-700 text-zinc-700 hover:border-zinc-500"
                         }`}
-                      title={ride.reviewed ? "Reviewed" : "Mark as reviewed"}
+                      title={Boolean(ride.reviewed) ? "Reviewed" : "Mark as reviewed"}
                     >
-                      {ride.reviewed && (
+                      {Boolean(ride.reviewed) && (
                         <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M2 6l3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
