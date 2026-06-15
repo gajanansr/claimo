@@ -1,11 +1,11 @@
 {
-  "name": "Claimo - Ride Expense App",
-  "short_name": "Claimo",
+  "name": "claimo.",
+  "short_name": "claimo",
   "description": "Automated ride expense reimbursement tracker",
-  "start_url": "/",
+  "start_url": "/dashboard",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#0f172a",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "icons": [
     {
       "src": "/icon-192x192.png",

@@ -5,12 +5,10 @@ import { createClient } from "@/lib/supabase";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Bell, ChevronRight, LogOut, Mail, RefreshCw,
-  Shield, Trash2, User, Wallet,
-} from "lucide-react";
+import { LogOut, Mail, RefreshCw, Shield, Trash2, User, Wallet, Bell, ChevronRight } from "lucide-react";
 import type { User as SupaUser } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 // type Section = { label: string; items: SettingItem[] };
 // type SettingItem = {
@@ -83,7 +81,7 @@ export default function SettingsPage() {
           icon={Mail}
           label="Gmail"
           desc={profile?.gmail_connected ? "Connected · Read-only access" : "Not connected"}
-          onClick={() => alert("To disconnect, please revoke access from your Google Account settings.")}
+          onClick={() => toast.info("To disconnect, please revoke access from your Google Account settings.")}
           right={
             <div className="flex items-center gap-2">
               <span className={`h-1.5 w-1.5 rounded-full ${profile?.gmail_connected ? 'bg-emerald-500 animate-pulse-dot' : 'bg-amber-500'}`} />
@@ -97,7 +95,7 @@ export default function SettingsPage() {
           icon={RefreshCw}
           label="Sync frequency"
           desc="Gmail is scanned every 2 hours"
-          onClick={() => alert("Sync frequency settings coming soon!")}
+          onClick={() => toast.info("Sync frequency settings coming soon!")}
           right={
             <span className="text-[12px] text-zinc-500">Every 2h <ChevronRight className="inline h-3 w-3 mb-0.5" /></span>
           }
@@ -111,7 +109,7 @@ export default function SettingsPage() {
           label="Default currency"
           desc="Used in reports and expense totals"
           right={<span className="text-[12px] text-zinc-400 font-medium">INR ₹ <ChevronRight className="inline h-3 w-3 mb-0.5" /></span>}
-          onClick={() => alert("Currency settings coming soon!")}
+          onClick={() => toast.info("Currency settings coming soon!")}
         />
         <SettingsRow
           icon={Bell}
@@ -138,14 +136,14 @@ export default function SettingsPage() {
           icon={Shield}
           label="Privacy"
           desc="Read-only Gmail access · No data sold"
-          onClick={() => alert("Privacy policy coming soon!")}
+          onClick={() => toast.info("Privacy policy coming soon!")}
           right={<ChevronRight className="h-4 w-4 text-zinc-700" />}
         />
         <SettingsRow
           icon={User}
           label="Account plan"
           desc="Free tier · Up to 50 rides / month"
-          onClick={() => alert("Pro plans coming soon!")}
+          onClick={() => toast.info("Pro plans coming soon!")}
           right={
             <Badge variant="outline" className="bg-zinc-900 border-zinc-700 text-zinc-400 text-[10px] font-normal px-2 py-0.5 rounded">
               Free
@@ -163,7 +161,7 @@ export default function SettingsPage() {
           danger
           onClick={() => {
             if (confirm("Are you sure? This cannot be undone.")) {
-              alert("Data deletion logic coming soon.");
+              toast.error("Data deletion logic coming soon.");
             }
           }}
           right={<ChevronRight className="h-4 w-4 text-zinc-700" />}

@@ -33,7 +33,8 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
 
   const total = filtered.length;
   const pending = filtered.filter(r => r.status === "pending").length;
-  const amount = filtered.reduce((acc, r) => acc + Number(r.amount || 0), 0).toFixed(2);
+  const rawAmount = filtered.reduce((acc, r) => acc + Number(r.amount || 0), 0);
+  const formattedAmount = Intl.NumberFormat('en-IN', { notation: "compact", maximumFractionDigits: 1 }).format(rawAmount);
 
   const handleExport = () => {
     // Generate CSV string
@@ -75,7 +76,7 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
       <div className="grid grid-cols-3 gap-4">
         {[
           { label: "Total rides", value: total },
-          { label: "Total amount", value: `₹${amount}` },
+          { label: "Total amount", value: `₹${formattedAmount}` },
           { label: "Pending sync", value: pending, warn: true },
         ].map(({ label, value, warn }) => (
           <div key={label} className="bg-zinc-950 border border-zinc-900 rounded-xl px-5 py-4">
@@ -88,8 +89,8 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
       </div>
 
       {/* ── Filter row ──────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-zinc-800 rounded-md text-[12px]">
+      <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide pb-1">
+        <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-zinc-800 rounded-md text-[12px] shrink-0">
           <SlidersHorizontal className="h-3 w-3" />
           Filter
         </Button>
@@ -100,7 +101,7 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
             onClick={() => setFilterService(s)}
             variant="ghost"
             size="sm"
-            className={`h-7 px-3 text-[12px] rounded-md border transition-all capitalize
+            className={`h-7 px-3 text-[12px] rounded-md border transition-all capitalize shrink-0
               ${filterService === s
                 ? "bg-zinc-900 border-zinc-700 text-zinc-200"
                 : "border-zinc-800 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900"
@@ -117,7 +118,7 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
           onClick={() => setFilterPending(!filterPending)}
           variant="ghost"
           size="sm"
-          className={`h-7 px-3 text-[12px] rounded-md border transition-all ml-auto
+          className={`h-7 px-3 text-[12px] rounded-md border transition-all ml-auto shrink-0
             ${filterPending
               ? "bg-zinc-900 border-zinc-700 text-zinc-200"
               : "border-zinc-800 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900"
@@ -129,13 +130,13 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
       </div>
 
       {/* ── Ride table ──────────────────────────────────────────── */}
-      <div className="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden shadow-sm">
-        <Table>
+      <div className="bg-zinc-950 border border-zinc-900 rounded-xl overflow-hidden shadow-sm overflow-x-auto">
+        <Table className="min-w-[600px]">
           <TableHeader>
             <TableRow className="hover:bg-transparent border-zinc-900/80">
               <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest pl-5">Date</TableHead>
               <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Service</TableHead>
-              <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest hidden sm:table-cell">Route</TableHead>
+              <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Route</TableHead>
               <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Amount</TableHead>
               <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Status</TableHead>
               <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest text-right pr-5">Reviewed</TableHead>
@@ -156,8 +157,8 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
                       <span className="text-zinc-200 text-[13px] font-medium capitalize">{String(ride.service)}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="py-3 hidden sm:table-cell">
-                    <span className="text-zinc-500 text-[12px]">
+                  <TableCell className="py-3">
+                    <span className="text-zinc-500 text-[12px] block max-w-[150px] truncate">
                       {String(ride.from_location || "Unknown")} <span className="text-zinc-700 mx-1">→</span> {String(ride.to_location || "Unknown")}
                     </span>
                   </TableCell>
@@ -199,7 +200,7 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
 
         {/* Footer */}
         <div className="border-t border-zinc-900/80 px-5 py-3 flex items-center justify-between">
-          <span className="text-[11px] text-zinc-600">{total} rides shown · ₹{amount} total</span>
+          <span className="text-[11px] text-zinc-600">{total} rides shown · ₹{formattedAmount} total</span>
           <div className="flex items-center gap-3">
             {[["Uber", "bg-zinc-200"], ["Rapido", "bg-yellow-400"]].map(([name, color]) => (
               <div key={name} className="flex items-center gap-1.5">

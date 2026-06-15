@@ -35,7 +35,7 @@ export function GenerateReportDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger className="inline-flex items-center gap-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-semibold rounded-lg shadow-sm text-[13px] h-8 px-3 transition-colors">
         <Plus className="h-3.5 w-3.5" />
-        New Report
+        Report
       </DialogTrigger>
 
       <DialogContent className="bg-zinc-950 border-zinc-800 text-zinc-100 rounded-xl shadow-2xl max-w-sm">

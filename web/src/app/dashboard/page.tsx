@@ -98,7 +98,7 @@ export default async function DashboardPage() {
           className="inline-flex items-center gap-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-semibold rounded-lg shadow-sm text-[13px] h-8 px-3 transition-colors"
         >
           <FileText className="h-3.5 w-3.5" />
-          Generate Report
+          + Report
         </Link>
       </div>
 

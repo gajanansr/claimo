@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 export function SyncButton({ className, variant = "ghost", children, iconOnly = false }: { className?: string, variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link" | null | undefined, children?: React.ReactNode, iconOnly?: boolean }) {
   const [loading, setLoading] = useState(false);
@@ -20,10 +21,10 @@ export function SyncButton({ className, variant = "ghost", children, iconOnly = 
         return;
       }
       
-      alert(`Sync complete! Found ${data.syncedCount} new rides.`);
+      toast.success(`Sync complete! Found ${data.syncedCount} new rides.`);
       router.refresh(); // Refresh Server Components to show new data
     } catch {
-      alert("An unexpected error occurred.");
+      toast.error("An unexpected error occurred.");
     } finally {
       setLoading(false);
     }
