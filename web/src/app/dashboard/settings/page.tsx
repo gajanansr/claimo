@@ -83,6 +83,7 @@ export default function SettingsPage() {
           icon={Mail}
           label="Gmail"
           desc={profile?.gmail_connected ? "Connected · Read-only access" : "Not connected"}
+          onClick={() => alert("To disconnect, please revoke access from your Google Account settings.")}
           right={
             <div className="flex items-center gap-2">
               <span className={`h-1.5 w-1.5 rounded-full ${profile?.gmail_connected ? 'bg-emerald-500 animate-pulse-dot' : 'bg-amber-500'}`} />
@@ -96,6 +97,7 @@ export default function SettingsPage() {
           icon={RefreshCw}
           label="Sync frequency"
           desc="Gmail is scanned every 2 hours"
+          onClick={() => alert("Sync frequency settings coming soon!")}
           right={
             <span className="text-[12px] text-zinc-500">Every 2h <ChevronRight className="inline h-3 w-3 mb-0.5" /></span>
           }
@@ -109,14 +111,15 @@ export default function SettingsPage() {
           label="Default currency"
           desc="Used in reports and expense totals"
           right={<span className="text-[12px] text-zinc-400 font-medium">INR ₹ <ChevronRight className="inline h-3 w-3 mb-0.5" /></span>}
+          onClick={() => alert("Currency settings coming soon!")}
         />
         <SettingsRow
           icon={Bell}
           label="Email notifications"
           desc="Get notified when a report is ready"
+          onClick={() => setNotifications(n => !n)}
           right={
             <button
-              onClick={() => setNotifications(n => !n)}
               className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border transition-colors duration-200
                 ${notifications ? "bg-zinc-100 border-zinc-200" : "bg-zinc-800 border-zinc-700"}`}
             >
@@ -135,12 +138,14 @@ export default function SettingsPage() {
           icon={Shield}
           label="Privacy"
           desc="Read-only Gmail access · No data sold"
+          onClick={() => alert("Privacy policy coming soon!")}
           right={<ChevronRight className="h-4 w-4 text-zinc-700" />}
         />
         <SettingsRow
           icon={User}
           label="Account plan"
           desc="Free tier · Up to 50 rides / month"
+          onClick={() => alert("Pro plans coming soon!")}
           right={
             <Badge variant="outline" className="bg-zinc-900 border-zinc-700 text-zinc-400 text-[10px] font-normal px-2 py-0.5 rounded">
               Free
@@ -156,6 +161,11 @@ export default function SettingsPage() {
           label="Delete all data"
           desc="Permanently remove all rides and reports"
           danger
+          onClick={() => {
+            if (confirm("Are you sure? This cannot be undone.")) {
+              alert("Data deletion logic coming soon.");
+            }
+          }}
           right={<ChevronRight className="h-4 w-4 text-zinc-700" />}
         />
       </SettingsGroup>
@@ -190,16 +200,20 @@ function SettingsGroup({ title, children }: { title: string; children: React.Rea
 }
 
 function SettingsRow({
-  icon: Icon, label, desc, right, danger = false,
+  icon: Icon, label, desc, right, danger = false, onClick
 }: {
   icon: React.ElementType;
   label: string;
   desc: string;
   right?: React.ReactNode;
   danger?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <div className={`flex items-center gap-3 px-4 py-3.5 ${danger ? "hover:bg-red-950/10" : "hover:bg-zinc-900/30"} transition-colors cursor-default rounded-xl`}>
+    <div 
+      onClick={onClick}
+      className={`flex items-center gap-3 px-4 py-3.5 ${danger ? "hover:bg-red-950/10" : "hover:bg-zinc-900/30"} transition-colors ${onClick ? 'cursor-pointer' : 'cursor-default'} rounded-xl`}
+    >
       <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${danger ? "bg-red-950/20 border border-red-900/40" : "bg-zinc-900 border border-zinc-800"}`}>
         <Icon className={`h-3.5 w-3.5 ${danger ? "text-red-400" : "text-zinc-400"}`} />
       </div>

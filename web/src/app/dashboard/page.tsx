@@ -244,10 +244,9 @@ export default async function DashboardPage() {
               <p className="text-xs text-zinc-600 max-w-[22rem] leading-relaxed mb-5">
                 Connect your Gmail account and Claimo will automatically find your Uber and Rapido ride receipts.
               </p>
-              <Button className="bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-semibold text-[13px] h-8 px-4 rounded-lg">
-                <Mail className="h-3.5 w-3.5 mr-1.5" />
-                Connect Gmail
-              </Button>
+              <SyncButton className="bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-semibold text-[13px] h-8 px-4 rounded-lg flex items-center justify-center gap-1.5">
+                Sync now
+              </SyncButton>
             </div>
           )}
         </CardContent>

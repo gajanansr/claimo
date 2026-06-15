@@ -49,8 +49,8 @@ export async function POST(request: Request) {
     // Limiting to 10 for performance in this initial version
     const searchRes = await gmail.users.messages.list({
       userId: "me",
-      q: "from:(receipts.bengaluru@uber.com OR receipts@uber.com OR no-reply@rapido.bike) subject:(receipt OR ride)",
-      maxResults: 10,
+      q: "(from:uber.com OR from:rapido.bike) subject:(receipt OR ride OR trip OR invoice)",
+      maxResults: 20,
     });
 
     const messages = searchRes.data.messages || [];
