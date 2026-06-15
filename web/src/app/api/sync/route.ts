@@ -121,7 +121,6 @@ export async function POST(request: Request) {
         const $ = cheerio.load(htmlData);
         cleanText += " " + $.text().replace(/\s+/g, " ");
 
-        // Extract Uber receipt link if present
         if (service === "uber") {
           const link = $("a").filter((i, el) => $(el).attr("href")?.includes("receipt") || $(el).text().toLowerCase().includes("download")).first();
           if (link.length) receiptLink = link.attr("href") || "";
@@ -131,6 +130,12 @@ export async function POST(request: Request) {
 
           const toLocMatch = $("[data-testid='address_point_1_address']").first().text().trim();
           if (toLocMatch) toLocation = toLocMatch;
+        } else if (service === "rapido") {
+          const rapidoFrom = $(".pickup-point .location").first().text().trim();
+          if (rapidoFrom) fromLocation = rapidoFrom.replace(/\s+/g, ' ');
+
+          const rapidoTo = $(".drop-point .location").first().text().trim();
+          if (rapidoTo) toLocation = rapidoTo.replace(/\s+/g, ' ');
         }
       }
 
@@ -142,11 +147,9 @@ export async function POST(request: Request) {
         amount = parseFloat(amountMatch[1].replace(/,/g, ""));
       }
 
-      // Attempt to guess locations for UI
-      if (service === "rapido") {
-        fromLocation = fromLocation || "Pickup Location"; // We will fix this when user provides Rapido HTML
-        toLocation = toLocation || "Drop Location";
-      }
+      // Fallback for missing locations so the UI doesn't look broken
+      fromLocation = fromLocation || "Unknown Location";
+      toLocation = toLocation || "Unknown Location";
 
       // If we couldn't parse an amount, we'll mark it as pending manual review
       const tripDate = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString();

@@ -29,8 +29,8 @@ export async function GET(request: Request) {
     oauth2Client.setCredentials({ access_token: profile.google_access_token });
     const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
-    // Grab 1 Uber and 1 Rapido receipt
-    const searchRes = await gmail.users.messages.list({ userId: "me", q: "(from:uber.com OR from:rapido.bike)", maxResults: 2 });
+    // Grab exclusively Uber receipts without relying on subject (which varies by region)
+    const searchRes = await gmail.users.messages.list({ userId: "me", q: "from:uber.com", maxResults: 5 });
     
     let logs = "";
 
