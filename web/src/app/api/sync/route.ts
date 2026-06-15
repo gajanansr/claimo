@@ -125,6 +125,12 @@ export async function POST(request: Request) {
         if (service === "uber") {
           const link = $("a").filter((i, el) => $(el).attr("href")?.includes("receipt") || $(el).text().toLowerCase().includes("download")).first();
           if (link.length) receiptLink = link.attr("href") || "";
+
+          const fromLocMatch = $("[data-testid='address_point_0_address']").first().text().trim();
+          if (fromLocMatch) fromLocation = fromLocMatch;
+
+          const toLocMatch = $("[data-testid='address_point_1_address']").first().text().trim();
+          if (toLocMatch) toLocation = toLocMatch;
         }
       }
 
@@ -138,8 +144,8 @@ export async function POST(request: Request) {
 
       // Attempt to guess locations for UI
       if (service === "rapido") {
-        fromLocation = "Pickup Location"; // Simplified for MVP
-        toLocation = "Drop Location";
+        fromLocation = fromLocation || "Pickup Location"; // We will fix this when user provides Rapido HTML
+        toLocation = toLocation || "Drop Location";
       }
 
       // If we couldn't parse an amount, we'll mark it as pending manual review
