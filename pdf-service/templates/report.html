@@ -31,6 +31,7 @@
         <th>Date</th>
         <th>Service</th>
         <th>Route</th>
+        <th>Proof</th>
         <th>Amount</th>
       </tr>
     </thead>
@@ -40,6 +41,13 @@
         <td>{{ ride.date }}</td>
         <td style="text-transform: capitalize;">{{ ride.service }}</td>
         <td>{{ ride.from_location }} &rarr; {{ ride.to_location }}</td>
+        <td>
+          {% if ride.receipt_link %}
+          <a href="{{ ride.receipt_link }}">View Receipt</a>
+          {% else %}
+          N/A
+          {% endif %}
+        </td>
         <td>{{ ride.amount }}</td>
       </tr>
       {% endfor %}

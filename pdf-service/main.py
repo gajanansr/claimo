@@ -111,12 +111,16 @@ def generate_direct(req: DirectReportRequest):
     total_amount = sum(float(r.get("amount", 0)) for r in rides)
     formatted_rides = []
     for r in rides:
+        snippet = r.get("raw_email_snippet") or ""
+        receipt_link = snippet if snippet.startswith("http") else None
+        
         formatted_rides.append({
             "date": r.get("trip_date"),
             "service": r.get("service"),
             "from_location": r.get("from_location") or "Unknown",
             "to_location": r.get("to_location") or "Unknown",
-            "amount": f"{r.get('currency', 'INR')} {r.get('amount')}"
+            "amount": f"{r.get('currency', 'INR')} {r.get('amount')}",
+            "receipt_link": receipt_link
         })
         
     template = env.get_template("report.html")
