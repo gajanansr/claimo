@@ -19,6 +19,10 @@ export const metadata: Metadata = {
   title: "claimo. — Ride Expense Automation",
   description: "Automatically track, sync, and generate reimbursement reports for your ride expenses.",
   manifest: "/manifest.json",
+  icons: {
+    icon: '/icon.svg',
+    apple: '/icon.svg',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

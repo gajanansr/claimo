@@ -2,7 +2,9 @@ import os
 import uuid
 from datetime import datetime
 from fastapi import FastAPI, BackgroundTasks
+from fastapi.responses import Response
 from pydantic import BaseModel
+from typing import List
 from supabase import create_client, Client
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML
@@ -93,6 +95,42 @@ def generate_pdf_task(req: ReportRequest):
 async def generate_report(req: ReportRequest, background_tasks: BackgroundTasks):
     background_tasks.add_task(generate_pdf_task, req)
     return {"status": "processing", "report_id": req.report_id}
+
+class DirectReportRequest(BaseModel):
+    user_id: str
+    receipt_ids: List[str]
+
+@app.post("/generate-direct")
+def generate_direct(req: DirectReportRequest):
+    if not supabase:
+        return Response(content="Supabase not configured", status_code=500)
+    
+    res = supabase.table("receipts").select("*").in_("id", req.receipt_ids).eq("user_id", req.user_id).execute()
+    rides = res.data
+
+    total_amount = sum(float(r.get("amount", 0)) for r in rides)
+    formatted_rides = []
+    for r in rides:
+        formatted_rides.append({
+            "date": r.get("trip_date"),
+            "service": r.get("service"),
+            "from_location": r.get("from_location") or "Unknown",
+            "to_location": r.get("to_location") or "Unknown",
+            "amount": f"{r.get('currency', 'INR')} {r.get('amount')}"
+        })
+        
+    template = env.get_template("report.html")
+    html_out = template.render(
+        month=datetime.now().month,
+        year=datetime.now().year,
+        generated_date=datetime.now().strftime("%B %d, %Y"),
+        rides=formatted_rides,
+        total_amount=f"INR {total_amount:.2f}"
+    )
+    
+    pdf_bytes = HTML(string=html_out).write_pdf()
+    
+    return Response(content=pdf_bytes, media_type="application/pdf")
 
 @app.get("/health")
 def health_check():

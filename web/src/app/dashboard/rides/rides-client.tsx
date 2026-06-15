@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { SlidersHorizontal, Download } from "lucide-react";
+import { SlidersHorizontal, Download, FileText } from "lucide-react";
 import { format, parseISO } from "date-fns";
 
 const serviceColor: Record<string, string> = {
@@ -21,6 +22,11 @@ const statusConfig = {
 export function RidesClient({ initialRides }: { initialRides: Record<string, unknown>[] }) {
   const [filterService, setFilterService] = useState<string>("All");
   const [filterPending, setFilterPending] = useState<boolean>(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [mounted, setMounted] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   // Filter logic
   let filtered = initialRides;
@@ -58,6 +64,48 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
     document.body.removeChild(link);
   };
 
+  const handleGenerateReport = async () => {
+    setIsGenerating(true);
+    try {
+      const res = await fetch("/api/reports/custom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ receipt_ids: Array.from(selectedIds) })
+      });
+      if (!res.ok) throw new Error("Generation failed");
+      
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `claimo_custom_report_${format(new Date(), 'MMM_yyyy')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to generate report. Make sure the PDF microservice is running.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(r => String(r.id))));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
   return (
     <div className="space-y-6">
       {/* ── Header ──────────────────────────────────────────────── */}
@@ -66,10 +114,12 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
           <h1 className="text-xl font-bold text-zinc-100 tracking-tight">Rides</h1>
           <p className="text-zinc-500 text-sm mt-0.5">All synced receipts</p>
         </div>
-        <Button onClick={handleExport} className="bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-semibold border-0 rounded-lg shadow-sm text-[13px] h-8 px-3">
-          <Download className="mr-1.5 h-3.5 w-3.5" />
-          Export CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={handleExport} className="bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-semibold border-0 rounded-lg shadow-sm text-[13px] h-8 px-3">
+            <Download className="mr-1.5 h-3.5 w-3.5" />
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       {/* ── Summary strip ───────────────────────────────────────── */}
@@ -134,12 +184,25 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
         <Table className="min-w-[600px]">
           <TableHeader>
             <TableRow className="hover:bg-transparent border-zinc-900/80">
-              <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest pl-5">Date</TableHead>
+              <TableHead className="w-12 pl-5">
+                <button
+                  onClick={toggleSelectAll}
+                  className={`h-4 w-4 rounded border transition-all inline-flex items-center justify-center
+                    ${selectedIds.size === filtered.length && filtered.length > 0
+                      ? "bg-emerald-500 border-emerald-500 text-zinc-950"
+                      : "border-zinc-700 hover:border-zinc-500 text-transparent"
+                    }`}
+                >
+                  <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M2 6l3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </TableHead>
+              <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Date</TableHead>
               <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Service</TableHead>
               <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Route</TableHead>
               <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Amount</TableHead>
-              <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Status</TableHead>
-              <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest text-right pr-5">Reviewed</TableHead>
+              <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest pr-5">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -148,7 +211,21 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
               const sc = statusConfig[status as keyof typeof statusConfig] || statusConfig["pending"];
               return (
                 <TableRow key={String(ride.id)} className="border-zinc-900/60 hover:bg-zinc-900/20 transition-colors cursor-default">
-                  <TableCell className="text-zinc-400 text-[13px] pl-5 py-3">
+                  <TableCell className="pl-5 py-3">
+                    <button
+                      onClick={() => toggleSelect(String(ride.id))}
+                      className={`h-4 w-4 rounded border transition-all inline-flex items-center justify-center
+                        ${selectedIds.has(String(ride.id))
+                          ? "bg-emerald-500 border-emerald-500 text-zinc-950"
+                          : "border-zinc-700 hover:border-zinc-500 text-transparent"
+                        }`}
+                    >
+                      <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M2 6l3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                  </TableCell>
+                  <TableCell className="text-zinc-400 text-[13px] py-3">
                     {format(parseISO(String(ride.trip_date)), "MMM d, yyyy")}
                   </TableCell>
                   <TableCell className="py-3">
@@ -158,33 +235,17 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
                     </div>
                   </TableCell>
                   <TableCell className="py-3">
-                    <span className="text-zinc-500 text-[12px] block max-w-[150px] truncate">
+                    <div className="text-zinc-500 text-[12px] whitespace-nowrap overflow-x-auto block max-w-[150px] scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent pb-1">
                       {String(ride.from_location || "Unknown")} <span className="text-zinc-700 mx-1">→</span> {String(ride.to_location || "Unknown")}
-                    </span>
+                    </div>
                   </TableCell>
                   <TableCell className="text-zinc-100 text-[13px] font-semibold py-3">
                     ₹{Number(ride.amount).toFixed(2)}
                   </TableCell>
-                  <TableCell className="py-3">
+                  <TableCell className="pr-5 py-3">
                     <Badge variant="outline" className={`${sc.text} ${sc.border} ${sc.bg} font-normal text-[11px] px-2 py-0.5 rounded capitalize`}>
                       {status === 'found' ? 'Receipt Found' : status}
                     </Badge>
-                  </TableCell>
-                  <TableCell className="text-right pr-5 py-3">
-                    <button
-                      className={`h-5 w-5 rounded border transition-all inline-flex items-center justify-center
-                        ${Boolean(ride.reviewed)
-                          ? "bg-emerald-500/10 border-emerald-700 text-emerald-500"
-                          : "border-zinc-700 text-zinc-700 hover:border-zinc-500"
-                        }`}
-                      title={Boolean(ride.reviewed) ? "Reviewed" : "Mark as reviewed"}
-                    >
-                      {Boolean(ride.reviewed) && (
-                        <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M2 6l3 3 5-5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      )}
-                    </button>
                   </TableCell>
                 </TableRow>
               );
@@ -211,6 +272,25 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
           </div>
         </div>
       </div>
+
+      {/* Floating Generate Report Button */}
+      {mounted && selectedIds.size > 0 && createPortal(
+        <div className="fixed bottom-20 md:bottom-8 right-4 md:right-8 z-[100] animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <Button 
+            onClick={handleGenerateReport} 
+            disabled={isGenerating}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold border-0 rounded-full shadow-lg shadow-emerald-900/20 px-4 h-9 text-[13px] flex items-center gap-1.5 transition-all"
+          >
+            {isGenerating ? (
+              <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            ) : (
+              <FileText className="h-3.5 w-3.5" />
+            )}
+            <span>{isGenerating ? "Generating..." : `Generate Report (${selectedIds.size})`}</span>
+          </Button>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
