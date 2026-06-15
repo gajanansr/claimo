@@ -82,25 +82,27 @@ export default async function ReportsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right pr-5 py-3.5">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={report.status !== "ready" || !report.pdf_url}
-                      className="h-7 px-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 disabled:opacity-50 border border-zinc-800 text-[11px] rounded-md gap-1.5"
-                      asChild={report.status === "ready" && !!report.pdf_url}
-                    >
-                      {report.status === "ready" && report.pdf_url ? (
-                        <a href={`/api/reports/download?id=${report.id}`} target="_blank" rel="noopener noreferrer">
-                          <Download className="h-3 w-3" />
-                          PDF
-                        </a>
-                      ) : (
-                        <span>
-                          <Download className="h-3 w-3" />
-                          PDF
-                        </span>
-                      )}
-                    </Button>
+                    {report.status === "ready" && report.pdf_url ? (
+                      <a 
+                        href={`/api/reports/download?id=${report.id}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center whitespace-nowrap h-7 px-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-zinc-800 rounded-md transition-all text-xs font-medium"
+                      >
+                        <Download className="mr-1.5 h-3.5 w-3.5" />
+                        Download PDF
+                      </a>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled
+                        className="h-7 px-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-zinc-800 rounded-md transition-all text-xs font-medium"
+                      >
+                        <Download className="mr-1.5 h-3.5 w-3.5" />
+                        Download PDF
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               )) : (
