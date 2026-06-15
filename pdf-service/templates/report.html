@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Claimo Expense Report</title>
+  <style>
+    @page { size: A4; margin: 2cm; }
+    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1a1a1a; }
+    h1 { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+    .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 30px; }
+    .metadata { display: flex; justify-content: space-between; font-size: 14px; color: #666; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #ddd; font-size: 14px; }
+    th { text-transform: uppercase; font-size: 12px; color: #666; }
+    .total { font-size: 18px; font-weight: bold; text-align: right; }
+    .footer { text-align: center; font-size: 10px; color: #999; margin-top: 50px; border-top: 1px solid #eee; padding-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Claimo.</h1>
+    <div class="metadata">
+      <span>Ride Expense Report - {{ month }}/{{ year }}</span>
+      <span>Generated: {{ generated_date }}</span>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Service</th>
+        <th>Route</th>
+        <th>Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ride in rides %}
+      <tr>
+        <td>{{ ride.date }}</td>
+        <td style="text-transform: capitalize;">{{ ride.service }}</td>
+        <td>{{ ride.from_location }} &rarr; {{ ride.to_location }}</td>
+        <td>{{ ride.amount }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="total">
+    Total Reimbursable: {{ total_amount }}
+  </div>
+
+  <div class="footer">
+    Generated automatically by Claimo - The automated ride expense tracker.
+  </div>
+</body>
+</html>

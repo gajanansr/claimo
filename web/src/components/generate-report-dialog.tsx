@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { FileText, Loader2, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 const months = [
   "January", "February", "March", "April", "May", "June",
@@ -20,15 +21,29 @@ export function GenerateReportDialog() {
 
   const handleGenerate = async () => {
     setGen(true);
-    // In the future this will hit /api/reports/generate
-    // For now we simulate the delay and insert a dummy report record 
-    // or just fake the generation since the API isn't built yet
-    setTimeout(() => {
-      setGen(false);
+    try {
+      const monthIndex = months.indexOf(selectedMonth) + 1;
+      const res = await fetch("/api/reports/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ month: monthIndex, year: parseInt(selectedYear) })
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        toast.error(data.error || "Failed to generate report.");
+        return;
+      }
+      
+      toast.success(`Report generation for ${selectedMonth} ${selectedYear} started! It will appear shortly.`);
       setOpen(false);
-      alert(`Report generation for ${selectedMonth} ${selectedYear} started. It will appear here shortly.`);
       router.refresh();
-    }, 2200);
+    } catch (err) {
+      toast.error("Network error occurred.");
+    } finally {
+      setGen(false);
+    }
   };
 
   return (

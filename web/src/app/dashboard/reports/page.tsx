@@ -87,9 +87,19 @@ export default async function ReportsPage() {
                       size="sm"
                       disabled={report.status !== "ready" || !report.pdf_url}
                       className="h-7 px-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 disabled:opacity-50 border border-zinc-800 text-[11px] rounded-md gap-1.5"
+                      asChild={report.status === "ready" && !!report.pdf_url}
                     >
-                      <Download className="h-3 w-3" />
-                      PDF
+                      {report.status === "ready" && report.pdf_url ? (
+                        <a href={`/api/reports/download?id=${report.id}`} target="_blank" rel="noopener noreferrer">
+                          <Download className="h-3 w-3" />
+                          PDF
+                        </a>
+                      ) : (
+                        <span>
+                          <Download className="h-3 w-3" />
+                          PDF
+                        </span>
+                      )}
                     </Button>
                   </TableCell>
                 </TableRow>
