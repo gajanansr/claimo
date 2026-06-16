@@ -27,6 +27,10 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "claimo.",
+    startupImage: "/icon.svg",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
   },
 };
 

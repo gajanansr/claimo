@@ -1,30 +1,345 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>Claimo Expense Report</title>
   <style>
-    @page { size: A4; margin: 2cm; }
-    body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1a1a1a; }
-    h1 { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-    .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 30px; }
-    .metadata { display: flex; justify-content: space-between; font-size: 14px; color: #666; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
-    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #ddd; font-size: 14px; }
-    th { text-transform: uppercase; font-size: 12px; color: #666; }
-    .total { font-size: 18px; font-weight: bold; text-align: right; }
-    .footer { text-align: center; font-size: 10px; color: #999; margin-top: 50px; border-top: 1px solid #eee; padding-top: 10px; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+    @page {
+      size: A4;
+      margin: 1.5cm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      color: #18181b;
+      background: #ffffff;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    /* ─── HEADER ─────────────────────────────────────────────── */
+    .header {
+      background: #09090b;
+      color: #ffffff;
+      padding: 22px 28px;
+      border-radius: 10px;
+      margin-bottom: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .logo-text {
+      font-size: 26px;
+      font-weight: 800;
+      color: #ffffff;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-dot {
+      width: 8px;
+      height: 8px;
+      background: #10b981;
+      border-radius: 50%;
+      display: inline-block;
+      margin-left: 2px;
+      vertical-align: middle;
+      position: relative;
+      top: -9px;
+    }
+
+    .header-right {
+      text-align: right;
+    }
+
+    .header-period {
+      font-size: 15px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 2px;
+    }
+
+    .header-generated {
+      font-size: 11px;
+      color: #a1a1aa;
+      font-weight: 400;
+    }
+
+    /* ─── SUMMARY CARDS ──────────────────────────────────────── */
+    .summary-row {
+      display: flex;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .summary-card {
+      flex: 1;
+      background: #f4f4f5;
+      border-radius: 8px;
+      padding: 14px 18px;
+      border: 1px solid #e4e4e7;
+    }
+
+    .summary-card-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #71717a;
+      margin-bottom: 5px;
+    }
+
+    .summary-card-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: #09090b;
+    }
+
+    .summary-card.accent {
+      background: #ecfdf5;
+      border-color: #a7f3d0;
+    }
+
+    .summary-card.accent .summary-card-value {
+      color: #059669;
+    }
+
+    /* ─── TABLE ──────────────────────────────────────────────── */
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #71717a;
+      margin-bottom: 8px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 24px;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    thead tr {
+      background: #27272a;
+    }
+
+    thead th {
+      text-align: left;
+      padding: 10px 13px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #d4d4d8;
+      border: none;
+    }
+
+    thead th.col-amount {
+      text-align: right;
+    }
+
+    tbody tr {
+      background: #ffffff;
+    }
+
+    tbody tr.row-alt {
+      background: #f4f4f5;
+    }
+
+    tbody td {
+      padding: 10px 13px;
+      font-size: 12.5px;
+      color: #18181b;
+      border-bottom: 1px solid #e4e4e7;
+      vertical-align: middle;
+    }
+
+    tbody td.col-amount {
+      text-align: right;
+      font-weight: 700;
+      color: #09090b;
+      white-space: nowrap;
+    }
+
+    .col-date {
+      white-space: nowrap;
+      color: #52525b;
+      font-size: 12px;
+    }
+
+    .col-route {
+      color: #3f3f46;
+    }
+
+    .col-route .route-arrow {
+      color: #a1a1aa;
+      margin: 0 4px;
+    }
+
+    /* ─── SERVICE BADGES ─────────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .badge-uber {
+      background: #27272a;
+      color: #ffffff;
+    }
+
+    .badge-rapido {
+      background: #fbbf24;
+      color: #451a03;
+    }
+
+    .badge-default {
+      background: #e4e4e7;
+      color: #3f3f46;
+      text-transform: capitalize;
+    }
+
+    /* ─── PROOF COLUMN ───────────────────────────────────────── */
+    .proof-link {
+      color: #10b981;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    .proof-email {
+      font-size: 10.5px;
+      color: #a1a1aa;
+      font-style: italic;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display: block;
+    }
+
+    /* ─── TOTAL ROW ──────────────────────────────────────────── */
+    .total-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 32px;
+    }
+
+    .total-box {
+      background: #09090b;
+      color: #ffffff;
+      border-radius: 8px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .total-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: #a1a1aa;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .total-value {
+      font-size: 18px;
+      font-weight: 800;
+      color: #10b981;
+    }
+
+    /* ─── FOOTER ─────────────────────────────────────────────── */
+    .footer {
+      border-top: 1px solid #e4e4e7;
+      padding-top: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-brand {
+      font-size: 11px;
+      font-weight: 700;
+      color: #27272a;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .footer-brand-dot {
+      width: 5px;
+      height: 5px;
+      background: #10b981;
+      border-radius: 50%;
+      display: inline-block;
+      margin-left: 1px;
+    }
+
+    .footer-disclaimer {
+      font-size: 10px;
+      color: #a1a1aa;
+    }
   </style>
 </head>
 <body>
+
+  <!-- HEADER -->
   <div class="header">
-    <h1>Claimo.</h1>
-    <div class="metadata">
-      <span>Ride Expense Report - {{ month }}/{{ year }}</span>
-      <span>Generated: {{ generated_date }}</span>
+    <div class="header-left">
+      <span class="logo-text">Claimo</span><span class="logo-dot"></span>
+    </div>
+    <div class="header-right">
+      <div class="header-period">
+        Ride Expense Report &mdash;
+        {% set month_names = ["January","February","March","April","May","June","July","August","September","October","November","December"] %}
+        {{ month_names[month - 1] }} {{ year }}
+      </div>
+      <div class="header-generated">Generated {{ generated_date }}</div>
     </div>
   </div>
 
+  <!-- SUMMARY CARDS -->
+  <div class="summary-row">
+    <div class="summary-card">
+      <div class="summary-card-label">Total Rides</div>
+      <div class="summary-card-value">{{ ride_count }}</div>
+    </div>
+    <div class="summary-card accent">
+      <div class="summary-card-label">Total Amount</div>
+      <div class="summary-card-value">{{ total_amount }}</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-label">Period</div>
+      <div class="summary-card-value">
+        {% set month_names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"] %}
+        {{ month_names[month - 1] }} {{ year }}
+      </div>
+    </div>
+  </div>
+
+  <!-- RIDES TABLE -->
+  <div class="section-title">Ride Details</div>
   <table>
     <thead>
       <tr>
@@ -32,34 +347,58 @@
         <th>Service</th>
         <th>Route</th>
         <th>Proof</th>
-        <th>Amount</th>
+        <th class="col-amount">Amount</th>
       </tr>
     </thead>
     <tbody>
       {% for ride in rides %}
-      <tr>
-        <td>{{ ride.date }}</td>
-        <td style="text-transform: capitalize;">{{ ride.service }}</td>
-        <td>{{ ride.from_location }} &rarr; {{ ride.to_location }}</td>
+      <tr class="{{ 'row-alt' if loop.index is even else '' }}">
+        <td class="col-date">{{ ride.date }}</td>
         <td>
-          {% if ride.receipt_link %}
-          <a href="{{ ride.receipt_link }}">View Receipt</a>
+          {% set svc = ride.service | lower %}
+          {% if svc == 'uber' %}
+            <span class="badge badge-uber">Uber</span>
+          {% elif svc == 'rapido' %}
+            <span class="badge badge-rapido">Rapido</span>
           {% else %}
-          N/A
+            <span class="badge badge-default">{{ ride.service | capitalize }}</span>
           {% endif %}
         </td>
-        <td>{{ ride.amount }}</td>
+        <td class="col-route">
+          {{ ride.from_location }}<span class="route-arrow">&rarr;</span>{{ ride.to_location }}
+        </td>
+        <td>
+          {% if ride.receipt_link %}
+            <a class="proof-link" href="{{ ride.receipt_link }}">View Receipt &rarr;</a>
+          {% elif ride.email_subject %}
+            <span class="proof-email">{{ ride.email_subject }}</span>
+          {% else %}
+            <span style="color:#d4d4d8;">—</span>
+          {% endif %}
+        </td>
+        <td class="col-amount">{{ ride.amount }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 
-  <div class="total">
-    Total Reimbursable: {{ total_amount }}
+  <!-- TOTAL -->
+  <div class="total-row">
+    <div class="total-box">
+      <span class="total-label">Total Reimbursable</span>
+      <span class="total-value">{{ total_amount }}</span>
+    </div>
   </div>
 
+  <!-- FOOTER -->
   <div class="footer">
-    Generated automatically by Claimo - The automated ride expense tracker.
+    <div class="footer-brand">
+      Claimo<span class="footer-brand-dot"></span>
+    </div>
+    <div class="footer-disclaimer">
+      Generated by Claimo &middot; For reimbursement purposes only
+    </div>
   </div>
+
 </body>
 </html>
