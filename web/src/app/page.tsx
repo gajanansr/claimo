@@ -139,11 +139,9 @@ export default function LandingPage() {
           claimo<span className="text-emerald-600">.</span>
         </span>
         <div className="flex items-center gap-4">
-          {["Privacy", "Terms", "GitHub"].map((item) => (
-            <Link key={item} href="#" className="text-[11px] text-zinc-700 hover:text-zinc-400 transition-colors">
-              {item}
-            </Link>
-          ))}
+          <Link href="/privacy" className="text-[11px] text-zinc-700 hover:text-zinc-400 transition-colors">Privacy</Link>
+          <Link href="/terms" className="text-[11px] text-zinc-700 hover:text-zinc-400 transition-colors">Terms</Link>
+          <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="text-[11px] text-zinc-700 hover:text-zinc-400 transition-colors">GitHub</a>
         </div>
       </footer>
     </div>
