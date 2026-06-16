@@ -203,18 +203,32 @@ def generate_direct(req: DirectReportRequest):
 
     for r in rides:
         snippet = r.get("raw_email_snippet") or ""
+        service = (r.get("service") or "").lower()
 
-        # Detect if the snippet is a URL, HTML, or a plain subject string
-        if snippet.startswith("http"):
-            receipt_link = snippet
-            raw_email_html = None
-        elif snippet.startswith("<"):
-            # It's raw HTML – use it for the email-to-image step
-            receipt_link = None
+        receipt_link = None
+        raw_email_html = None
+
+        if snippet.startswith("<"):
+            # Full HTML email — queue for Playwright receipt rendering
             raw_email_html = snippet
-        else:
-            receipt_link = None
-            raw_email_html = None
+            # For Uber: extract the receipt download link so the summary
+            # table can still show a clickable "View Receipt" link
+            if service == "uber":
+                try:
+                    import re
+                    # Find an <a href> whose URL contains 'receipt' or 'invoice'
+                    match = re.search(
+                        r'href=["\']([^"\' ]*(?:receipt|invoice)[^"\' ]*)["\']',
+                        snippet, re.IGNORECASE
+                    )
+                    if match:
+                        receipt_link = match.group(1)
+                except Exception:
+                    pass
+        elif snippet.startswith("http"):
+            # Legacy rows stored before the HTML-storage fix
+            receipt_link = snippet
+        # else: short Gmail snippet — neither link nor HTML
 
         formatted_rides.append(
             {

@@ -151,8 +151,19 @@ export async function POST(request: Request) {
       fromLocation = fromLocation || "Unknown Location";
       toLocation = toLocation || "Unknown Location";
 
-      // If we couldn't parse an amount, we'll mark it as pending manual review
       const tripDate = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString();
+
+      // Store the full HTML so the PDF service can render it as a receipt image via Playwright.
+      // Limit to 500 KB to stay well within Supabase row limits (real emails are 20–100 KB).
+      const MAX_HTML = 500_000;
+      let storedSnippet = "";
+      if (htmlData) {
+        storedSnippet = htmlData.length > MAX_HTML ? htmlData.slice(0, MAX_HTML) : htmlData;
+      } else if (receiptLink) {
+        storedSnippet = receiptLink;
+      } else {
+        storedSnippet = fullMsg.data.snippet || "";
+      }
 
       await supabase.from("receipts").insert({
         user_id: user.id,
@@ -165,7 +176,7 @@ export async function POST(request: Request) {
         email_subject: subject,
         from_location: fromLocation,
         to_location: toLocation,
-        raw_email_snippet: receiptLink || fullMsg.data.snippet || "",
+        raw_email_snippet: storedSnippet,
       });
 
       syncedCount++;
