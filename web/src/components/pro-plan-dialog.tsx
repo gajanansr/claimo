@@ -18,7 +18,9 @@ export function ProPlanDialog({ open, onClose, onSuccess }: ProPlanDialogProps) 
   const [coupon, setCoupon] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState(false);
 
-  const finalPrice = appliedCoupon ? 99 : 149;
+  // Since Pro logic just launched, all users without Pro are first-time buyers!
+  const isFirstMonth = true; 
+  const finalPrice = isFirstMonth ? 1 : (appliedCoupon ? 99 : 149);
 
   const handleApplyCoupon = () => {
     if (coupon.toUpperCase() === "FLAT50") {
@@ -33,10 +35,11 @@ export function ProPlanDialog({ open, onClose, onSuccess }: ProPlanDialogProps) 
     setLoading(true);
     try {
       // 1. Create Order on Backend
+      const activeCoupon = isFirstMonth ? "FIRSTMONTH" : (appliedCoupon ? "FLAT50" : "");
       const orderRes = await fetch("/api/razorpay/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ couponCode: appliedCoupon ? "FLAT50" : "" }),
+        body: JSON.stringify({ couponCode: activeCoupon }),
       });
       
       const orderData = await orderRes.json();
@@ -135,7 +138,14 @@ export function ProPlanDialog({ open, onClose, onSuccess }: ProPlanDialogProps) 
                 <span className="text-zinc-100 text-sm font-semibold">₹149</span>
               </div>
               
-              {!appliedCoupon && (
+              {isFirstMonth ? (
+                <div className="flex items-center justify-between pt-1 border-t border-zinc-800">
+                  <span className="text-emerald-400 text-xs flex items-center gap-1 font-semibold">
+                    <Sparkles className="h-3 w-3" /> First Month Welcome (99% Off)
+                  </span>
+                  <span className="text-emerald-400 text-sm font-semibold">-₹148</span>
+                </div>
+              ) : !appliedCoupon ? (
                 <div className="flex items-center gap-2 pt-1">
                   <div className="relative flex-1">
                     <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
@@ -156,9 +166,7 @@ export function ProPlanDialog({ open, onClose, onSuccess }: ProPlanDialogProps) 
                     Apply
                   </Button>
                 </div>
-              )}
-
-              {appliedCoupon && (
+              ) : (
                 <div className="flex items-center justify-between pt-1 border-t border-zinc-800">
                   <span className="text-emerald-400 text-xs flex items-center gap-1">
                     <Tag className="h-3 w-3" /> FLAT50 Applied

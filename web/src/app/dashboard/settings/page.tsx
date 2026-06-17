@@ -13,6 +13,16 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { LocationPicker } from "@/components/location-picker";
 import { ProPlanDialog } from "@/components/pro-plan-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const ICON_MAP: Record<string, LucideIcon> = {
   building: Building2,
@@ -55,6 +65,13 @@ export default function SettingsPage() {
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showProPlan, setShowProPlan] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    title: "",
+    description: "",
+    actionLabel: "Continue",
+    onConfirm: () => {},
+  });
 
   const fetchLocations = useCallback(async () => {
     const res = await fetch("/api/locations");
@@ -77,8 +94,7 @@ export default function SettingsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleDeleteLocation = async (loc: UserLocation) => {
-    if (!confirm(`Delete "${loc.emoji} ${loc.label}"? This cannot be undone.`)) return;
+  const executeDeleteLocation = async (loc: UserLocation) => {
     setDeletingId(loc.id);
     try {
       const res = await fetch(`/api/locations?id=${loc.id}`, { method: "DELETE" });
@@ -93,6 +109,46 @@ export default function SettingsPage() {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const handleDeleteLocation = (loc: UserLocation) => {
+    setConfirmDialog({
+      open: true,
+      title: "Remove Location",
+      description: `Are you sure you want to delete "${loc.emoji} ${loc.label}"? This cannot be undone.`,
+      actionLabel: "Remove",
+      onConfirm: () => executeDeleteLocation(loc),
+    });
+  };
+
+  const executeDeleteAllData = async () => {
+    if (!user) return;
+    const toastId = toast.loading("Deleting all your data...");
+    try {
+      const { error: rError } = await supabase.from("receipts").delete().eq("user_id", user.id);
+      const { error: pError } = await supabase.from("reports").delete().eq("user_id", user.id);
+      const { error: lError } = await supabase.from("user_locations").delete().eq("user_id", user.id);
+      
+      if (rError || pError || lError) {
+        toast.error("Failed to delete some data.", { id: toastId });
+      } else {
+        toast.success("All your data has been permanently deleted.", { id: toastId });
+        fetchLocations();
+        router.refresh();
+      }
+    } catch (err) {
+      toast.error("An unexpected error occurred.", { id: toastId });
+    }
+  };
+
+  const handleDeleteAllData = () => {
+    setConfirmDialog({
+      open: true,
+      title: "Delete All Data",
+      description: "Are you sure? This will permanently delete all your receipts, custom locations, and generated reports. This cannot be undone.",
+      actionLabel: "Delete Everything",
+      onConfirm: () => executeDeleteAllData(),
+    });
   };
 
   const handleSignOut = async () => {
@@ -289,6 +345,7 @@ export default function SettingsPage() {
         </div>
       </SettingsGroup>
 
+      {/* ── Dialogs ────────────────────────────────────────────── */}
       <LocationPicker
         open={showLocationPicker}
         onClose={() => setShowLocationPicker(false)}
@@ -302,8 +359,9 @@ export default function SettingsPage() {
         open={showProPlan}
         onClose={() => setShowProPlan(false)}
         onSuccess={() => {
-          // Optimistically update UI
           setProfile(prev => prev ? { ...prev, is_pro: true } : { is_pro: true });
+          setShowProPlan(false);
+          router.refresh();
         }}
       />
 
@@ -345,11 +403,7 @@ export default function SettingsPage() {
           label="Delete all data"
           desc="Permanently remove all rides and reports"
           danger
-          onClick={() => {
-            if (confirm("Are you sure? This cannot be undone.")) {
-              toast.error("Data deletion logic coming soon.");
-            }
-          }}
+          onClick={handleDeleteAllData}
           right={<ChevronRight className="h-4 w-4 text-zinc-700" />}
         />
       </SettingsGroup>
@@ -367,6 +421,25 @@ export default function SettingsPage() {
       <p className="text-center text-[10px] text-zinc-700 pb-2">
         claimo<span className="text-emerald-700">.</span> · v0.1.0
       </p>
+      <AlertDialog open={confirmDialog.open} onOpenChange={(isOpen) => setConfirmDialog(prev => ({ ...prev, open: isOpen }))}>
+        <AlertDialogContent className="bg-zinc-950 border-zinc-900 text-zinc-100">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-zinc-100">{confirmDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription className="text-zinc-400">
+              {confirmDialog.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-transparent text-zinc-300 hover:text-zinc-100 border-zinc-800 hover:bg-zinc-900">Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmDialog.onConfirm}
+              className="bg-red-950/40 text-red-400 hover:bg-red-900/60 border border-red-900/50 transition-colors"
+            >
+              {confirmDialog.actionLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

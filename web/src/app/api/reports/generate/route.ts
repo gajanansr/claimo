@@ -35,8 +35,8 @@ export async function POST(req: NextRequest) {
         .from("receipts")
         .select("*", { count: "exact", head: true })
         .eq("user_id", session.user.id)
-        .gte("date", startDate)
-        .lt("date", endDate);
+        .gte("trip_date", startDate)
+        .lt("trip_date", endDate);
         
       if (locationTag) {
         query = query.ilike("location_tag", `%${locationTag}%`);

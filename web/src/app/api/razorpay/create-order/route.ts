@@ -20,7 +20,9 @@ export async function POST(req: NextRequest) {
     }
 
     let amount = 14900; // 149 INR in paise
-    if (couponCode && couponCode.toUpperCase() === "FLAT50") {
+    if (couponCode && couponCode.toUpperCase() === "FIRSTMONTH") {
+      amount = 100; // 1 INR in paise (99% off)
+    } else if (couponCode && couponCode.toUpperCase() === "FLAT50") {
       amount = 9900; // 99 INR in paise
     }
 
