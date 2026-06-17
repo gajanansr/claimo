@@ -3,10 +3,12 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { FileText, Loader2, Plus } from "lucide-react";
+import { FileText, Loader2, Plus, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import { ProPlanDialog } from "./pro-plan-dialog";
+import { createClient } from "@/lib/supabase";
 
 const months = [
   "January", "February", "March", "April", "May", "June",
@@ -21,7 +23,9 @@ export function GenerateReportDialog() {
   const [locations, setLocations] = useState<{id: string, label: string}[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string>("");
   const [showProPlan, setShowProPlan] = useState(false);
+  const [tripCount, setTripCount] = useState<number | null>(null);
   const router = useRouter();
+  const supabase = createClient();
 
   useEffect(() => {
     if (open) {
@@ -33,6 +37,47 @@ export function GenerateReportDialog() {
         .catch(() => {});
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let isMounted = true;
+
+    const fetchCount = async () => {
+      setTripCount(null);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const monthIndex = months.indexOf(selectedMonth) + 1;
+      const yearNum = parseInt(selectedYear);
+      
+      const startDate = `${yearNum}-${monthIndex.toString().padStart(2, "0")}-01`;
+      let endDate;
+      if (monthIndex === 12) {
+        endDate = `${yearNum + 1}-01-01`;
+      } else {
+        endDate = `${yearNum}-${(monthIndex + 1).toString().padStart(2, "0")}-01`;
+      }
+
+      let query = supabase
+        .from("receipts")
+        .select("id", { count: "exact" })
+        .eq("user_id", user.id)
+        .gte("trip_date", startDate)
+        .lt("trip_date", endDate);
+
+      if (selectedLocation) {
+        query = query.ilike("location_tag", `%${selectedLocation}%`);
+      }
+
+      const { count } = await query;
+      if (isMounted) {
+        setTripCount(count || 0);
+      }
+    };
+
+    fetchCount();
+    return () => { isMounted = false; };
+  }, [selectedMonth, selectedYear, selectedLocation, open, supabase]);
 
   const handleGenerate = async () => {
     setGen(true);
@@ -154,6 +199,22 @@ export function GenerateReportDialog() {
               ))}
             </div>
           </div>
+
+          {/* Trip count preview */}
+          {tripCount !== null && (
+            <div className="flex items-center justify-between px-3 py-2.5 bg-emerald-950/20 border border-emerald-900/40 rounded-lg">
+              <span className="text-[12px] font-medium text-emerald-400">
+                {tripCount} {tripCount === 1 ? "trip" : "trips"} found matching criteria
+              </span>
+              <Link 
+                href="/dashboard/rides" 
+                onClick={() => setOpen(false)}
+                className="text-[11px] font-semibold text-emerald-300 hover:text-emerald-200 flex items-center gap-1 transition-colors"
+              >
+                Review <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+          )}
 
           <Button
             onClick={handleGenerate}
