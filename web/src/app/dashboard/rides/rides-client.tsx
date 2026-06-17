@@ -22,6 +22,7 @@ const statusConfig = {
 export function RidesClient({ initialRides }: { initialRides: Record<string, unknown>[] }) {
   const [filterService, setFilterService] = useState<string>("All");
   const [filterPending, setFilterPending] = useState<boolean>(false);
+  const [filterOffice, setFilterOffice] = useState<boolean>(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [mounted, setMounted] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -35,6 +36,9 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
   }
   if (filterPending) {
     filtered = filtered.filter(r => r.status === "pending");
+  }
+  if (filterOffice) {
+    filtered = filtered.filter(r => r.location_tag != null && String(r.location_tag).trim() !== "");
   }
 
   const total = filtered.length;
@@ -168,7 +172,7 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
           onClick={() => setFilterPending(!filterPending)}
           variant="ghost"
           size="sm"
-          className={`h-7 px-3 text-[12px] rounded-md border transition-all ml-auto shrink-0
+          className={`h-7 px-3 text-[12px] rounded-md border transition-all shrink-0
             ${filterPending
               ? "bg-zinc-900 border-zinc-700 text-zinc-200"
               : "border-zinc-800 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900"
@@ -176,6 +180,20 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
         >
           <span className="h-1.5 w-1.5 rounded-full bg-amber-400 mr-1.5" />
           Pending only
+        </Button>
+
+        <Button
+          onClick={() => setFilterOffice(!filterOffice)}
+          variant="ghost"
+          size="sm"
+          className={`h-7 px-3 text-[12px] rounded-md border transition-all ml-auto shrink-0
+            ${filterOffice
+              ? "bg-emerald-950/40 border-emerald-700/60 text-emerald-300"
+              : "border-zinc-800 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900"
+            }`}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 mr-1.5" />
+          Office trips only
         </Button>
       </div>
 
@@ -235,8 +253,13 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
                     </div>
                   </TableCell>
                   <TableCell className="py-3">
-                    <div className="text-zinc-500 text-[12px] whitespace-nowrap overflow-x-auto block max-w-[150px] scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent pb-1">
-                      {String(ride.from_location || "Unknown")} <span className="text-zinc-700 mx-1">→</span> {String(ride.to_location || "Unknown")}
+                    <div className="text-zinc-500 text-[12px] whitespace-nowrap overflow-x-auto block max-w-[180px] scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent pb-1">
+                      <span>{String(ride.from_location || "Unknown")} <span className="text-zinc-700 mx-1">→</span> {String(ride.to_location || "Unknown")}</span>
+                      {(ride.location_tag as string | null | undefined) && (
+                        <span className="text-[10px] text-emerald-400 bg-emerald-950/30 border border-emerald-900/50 rounded px-1.5 py-0.5 font-medium ml-1.5 inline-block whitespace-nowrap">
+                          {String(ride.location_tag)}
+                        </span>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="text-zinc-100 text-[13px] font-semibold py-3">

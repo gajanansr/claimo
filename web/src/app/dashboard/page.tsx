@@ -132,17 +132,10 @@ export default async function DashboardPage() {
             Your ride expenses for this month
           </p>
         </div>
-        <Link
-          href="/dashboard/reports"
-          className="inline-flex items-center gap-1.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 font-semibold rounded-lg shadow-sm text-[13px] h-8 px-3 transition-colors"
-        >
-          <FileText className="h-3.5 w-3.5" />
-          Report
-        </Link>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="bg-zinc-950 border-zinc-900 rounded-xl shadow-sm">
+      <div className="grid gap-4 sm:grid-cols-3 flex-col flex sm:grid">
+        <Card className="bg-zinc-950 border-zinc-900 rounded-xl shadow-sm order-1">
           <CardHeader className="flex flex-row items-center justify-between pb-1 pt-5 px-5">
             <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
               Total Expenses
@@ -174,7 +167,7 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-zinc-950 border-zinc-900 rounded-xl shadow-sm">
+        <Card className="bg-zinc-950 border-zinc-900 rounded-xl shadow-sm order-2">
           <CardHeader className="flex flex-row items-center justify-between pb-1 pt-5 px-5">
             <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
               Rides Tracked
@@ -219,7 +212,30 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-zinc-950 border-zinc-900 rounded-xl shadow-sm">
+        <Card className="bg-emerald-950/20 border-emerald-900/40 rounded-xl shadow-sm relative overflow-hidden group order-3 sm:order-4 sm:col-span-3">
+          <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+          <CardContent className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+            <div>
+              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                <span className="shrink-0 whitespace-nowrap text-[10px] font-bold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                  Pro Feature
+                </span>
+                <h3 className="text-[15px] font-bold text-zinc-100 leading-tight">Auto-tag Office Commutes</h3>
+              </div>
+              <p className="text-[13px] text-zinc-400 max-w-xl leading-relaxed mt-1">
+                Tired of sorting rides? Add your Home and Office locations to automatically tag rides and filter them with one click during report generation.
+              </p>
+            </div>
+            <Link
+              href="/dashboard/settings"
+              className="w-full sm:w-auto mt-1 sm:mt-0 shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-[13px] h-9 px-4 rounded-lg flex items-center justify-center transition-colors shadow-sm shadow-emerald-900/20"
+            >
+              Add Locations
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-zinc-950 border-zinc-900 rounded-xl shadow-sm order-4 sm:order-3">
           <CardHeader className="flex flex-row items-center justify-between pb-1 pt-5 px-5">
             <CardTitle className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
               Gmail Sync

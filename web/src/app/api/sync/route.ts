@@ -3,6 +3,35 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { google } from "googleapis";
 import * as cheerio from "cheerio";
+import { haversineMeters } from "@/lib/haversine";
+
+// Server-side geocoding helper (uses private API key)
+async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key || !address || address === "Unknown Location") return null;
+  try {
+    const url = `https://addressvalidation.googleapis.com/v1:validateAddress?key=${key}`;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "Referer": appUrl,
+      },
+      body: JSON.stringify({
+        address: { addressLines: [address] },
+      }),
+    });
+    const data = await res.json();
+    const location = data?.result?.geocode?.location;
+    if (location?.latitude != null && location?.longitude != null) {
+      return { lat: location.latitude, lng: location.longitude };
+    }
+  } catch (err) {
+    console.error("geocodeAddress error:", err);
+  }
+  return null;
+}
 
 export async function POST(request: Request) {
   try {
@@ -165,7 +194,7 @@ export async function POST(request: Request) {
         storedSnippet = fullMsg.data.snippet || "";
       }
 
-      await supabase.from("receipts").insert({
+      const insertResult = await supabase.from("receipts").insert({
         user_id: user.id,
         service,
         amount,
@@ -177,7 +206,59 @@ export async function POST(request: Request) {
         from_location: fromLocation,
         to_location: toLocation,
         raw_email_snippet: storedSnippet,
-      });
+      }).select("id").single();
+
+      // ── Location tagging ───────────────────────────────────────
+      if (!insertResult.error && insertResult.data?.id) {
+        const receiptId = insertResult.data.id;
+
+        // Fetch saved user locations
+        const { data: userLocations } = await supabase
+          .from("user_locations")
+          .select("*")
+          .eq("user_id", user.id);
+
+        if (userLocations && userLocations.length > 0) {
+          // Geocode from and to addresses in parallel
+          const [fromCoords, toCoords] = await Promise.all([
+            geocodeAddress(fromLocation),
+            geocodeAddress(toLocation),
+          ]);
+
+          let locationTag: string | null = null;
+          let matchedFrom: { label: string } | null = null;
+          let matchedTo: { label: string } | null = null;
+
+          for (const loc of userLocations) {
+            if (fromCoords) {
+              const dist = haversineMeters(fromCoords.lat, fromCoords.lng, loc.lat, loc.lng);
+              if (dist <= loc.radius_meters) matchedFrom = loc;
+            }
+            if (toCoords) {
+              const dist = haversineMeters(toCoords.lat, toCoords.lng, loc.lat, loc.lng);
+              if (dist <= loc.radius_meters) matchedTo = loc;
+            }
+          }
+
+          if (matchedFrom && matchedTo) {
+            locationTag = `${matchedFrom.label} → ${matchedTo.label}`;
+          } else if (matchedFrom) {
+            locationTag = `From ${matchedFrom.label}`;
+          } else if (matchedTo) {
+            locationTag = `To ${matchedTo.label}`;
+          }
+
+          // Update receipt with geocode results and location tag
+          const updatePayload: Record<string, unknown> = {};
+          if (fromCoords) { updatePayload.from_lat = fromCoords.lat; updatePayload.from_lng = fromCoords.lng; }
+          if (toCoords) { updatePayload.to_lat = toCoords.lat; updatePayload.to_lng = toCoords.lng; }
+          if (locationTag) updatePayload.location_tag = locationTag;
+
+          if (Object.keys(updatePayload).length > 0) {
+            await supabase.from("receipts").update(updatePayload).eq("id", receiptId);
+          }
+        }
+      }
 
       syncedCount++;
     }

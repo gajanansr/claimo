@@ -93,6 +93,7 @@ class ReportRequest(BaseModel):
     report_id: str
     month: int
     year: int
+    location_tag: str | None = None
 
 
 def generate_pdf_task(req: ReportRequest):
@@ -107,14 +108,17 @@ def generate_pdf_task(req: ReportRequest):
         else:
             end_date = f"{req.year}-{req.month + 1:02d}-01"
 
-        res = (
+        query = (
             supabase.table("receipts")
             .select("*")
             .eq("user_id", req.user_id)
             .gte("trip_date", start_date)
             .lt("trip_date", end_date)
-            .execute()
         )
+        if req.location_tag:
+            query = query.ilike("location_tag", f"%{req.location_tag}%")
+            
+        res = query.execute()
         rides = res.data
 
         total_amount = sum(float(r.get("amount", 0)) for r in rides)
