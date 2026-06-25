@@ -11,20 +11,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = await req.json();
+    const { razorpay_subscription_id, razorpay_payment_id, razorpay_signature } = await req.json();
 
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    if (!razorpay_subscription_id || !razorpay_payment_id || !razorpay_signature) {
+      return NextResponse.json({ error: "Missing Razorpay parameters" }, { status: 400 });
     }
 
-    const secret = process.env.RAZORPAY_KEY_SECRET;
-    if (!secret) {
-      return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+    if (!process.env.RAZORPAY_KEY_SECRET) {
+      return NextResponse.json({ error: "Razorpay secret not configured" }, { status: 500 });
     }
+
+    // Verify signature
+    // The signature for a subscription is: hmac_sha256(razorpay_payment_id + "|" + razorpay_subscription_id, secret)
+    const body = razorpay_payment_id + "|" + razorpay_subscription_id;
     
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSignature = crypto
-      .createHmac("sha256", secret)
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
       .update(body.toString())
       .digest("hex");
 

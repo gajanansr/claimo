@@ -126,6 +126,14 @@ function AuthContent() {
               <CardDescription className="text-center text-zinc-500 text-[13px]">
                 Sign in to sync your ride receipts automatically.
               </CardDescription>
+              <div className="flex items-start gap-2 bg-amber-950/20 border border-amber-900/40 text-amber-300/90 text-[11.5px] px-3 py-2.5 rounded-lg mt-3 leading-relaxed">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4 shrink-0 mt-0.5 text-amber-400">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                </svg>
+                <span>
+                  <strong className="text-amber-200">Important:</strong> Sign in with the same email registered with your <strong>Uber</strong> or <strong>Rapido</strong> account. Claimo scans that inbox for ride receipts.
+                </span>
+              </div>
             </CardHeader>
 
             <CardContent className="space-y-4 pt-0">

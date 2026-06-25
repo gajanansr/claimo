@@ -17,12 +17,12 @@ export function ProPlanDialog({ open, onClose, onSuccess }: ProPlanDialogProps) 
   const [loading, setLoading] = useState(false);
   const [coupon, setCoupon] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState(false);
+  const [isFirstMonth, setIsFirstMonth] = useState(false);
+  const [planType, setPlanType] = useState<"monthly" | "quarterly">("monthly");
+  
+  const finalPrice = planType === "quarterly" ? 299 : (isFirstMonth ? 1 : (appliedCoupon ? 99 : 149));
 
-  // Since Pro logic just launched, all users without Pro are first-time buyers!
-  const isFirstMonth = true; 
-  const finalPrice = isFirstMonth ? 1 : (appliedCoupon ? 99 : 149);
-
-  const handleApplyCoupon = () => {
+  const applyCoupon = () => {
     if (coupon.toUpperCase() === "FLAT50") {
       setAppliedCoupon(true);
       toast.success("Coupon applied! ₹50 discount added.");
@@ -34,12 +34,12 @@ export function ProPlanDialog({ open, onClose, onSuccess }: ProPlanDialogProps) 
   const handlePayment = async () => {
     setLoading(true);
     try {
-      // 1. Create Order on Backend
+      // 1. Create Subscription on Backend
       const activeCoupon = isFirstMonth ? "FIRSTMONTH" : (appliedCoupon ? "FLAT50" : "");
       const orderRes = await fetch("/api/razorpay/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ couponCode: activeCoupon }),
+        body: JSON.stringify({ couponCode: activeCoupon, planType }),
       });
       
       const orderData = await orderRes.json();
@@ -51,11 +51,9 @@ export function ProPlanDialog({ open, onClose, onSuccess }: ProPlanDialogProps) 
       // 2. Open Razorpay Checkout Modal
       const options = {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: orderData.amount,
-        currency: orderData.currency,
         name: "Claimo Pro",
-        description: "1 Month Pro Subscription",
-        order_id: orderData.id,
+        description: "Pro Subscription",
+        subscription_id: orderData.id,
         handler: async function (response: any) {
           try {
             // 3. Verify Payment Signature
@@ -63,7 +61,7 @@ export function ProPlanDialog({ open, onClose, onSuccess }: ProPlanDialogProps) 
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                razorpay_order_id: response.razorpay_order_id,
+                razorpay_subscription_id: response.razorpay_subscription_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
               }),
@@ -133,12 +131,29 @@ export function ProPlanDialog({ open, onClose, onSuccess }: ProPlanDialogProps) 
             </ul>
 
             <div className="bg-zinc-900/50 rounded-lg p-3 border border-zinc-800 space-y-3">
+              
+              {/* Plan Toggle */}
+              <div className="flex bg-zinc-950 p-1 rounded-md border border-zinc-800 mb-2">
+                <button 
+                  className={`flex-1 text-xs py-1.5 rounded transition-colors ${planType === "monthly" ? "bg-zinc-800 text-zinc-100 font-semibold" : "text-zinc-400 hover:text-zinc-300"}`}
+                  onClick={() => setPlanType("monthly")}
+                >
+                  Monthly (₹149)
+                </button>
+                <button 
+                  className={`flex-1 text-xs py-1.5 rounded transition-colors ${planType === "quarterly" ? "bg-zinc-800 text-zinc-100 font-semibold" : "text-zinc-400 hover:text-zinc-300"}`}
+                  onClick={() => setPlanType("quarterly")}
+                >
+                  Quarterly (₹299) <span className="text-emerald-400 font-bold ml-1">SAVE 33%</span>
+                </button>
+              </div>
+
               <div className="flex items-center justify-between">
-                <span className="text-zinc-400 text-xs">Monthly Plan</span>
-                <span className="text-zinc-100 text-sm font-semibold">₹149</span>
+                <span className="text-zinc-400 text-xs">{planType === "monthly" ? "Monthly Plan" : "Quarterly Plan"}</span>
+                <span className="text-zinc-100 text-sm font-semibold">{planType === "monthly" ? "₹149" : "₹299"}</span>
               </div>
               
-              {isFirstMonth ? (
+              {planType === "monthly" && isFirstMonth ? (
                 <div className="flex items-center justify-between pt-1 border-t border-zinc-800">
                   <span className="text-emerald-400 text-xs flex items-center gap-1 font-semibold">
                     <Sparkles className="h-3 w-3" /> First Month Welcome (99% Off)
@@ -154,30 +169,34 @@ export function ProPlanDialog({ open, onClose, onSuccess }: ProPlanDialogProps) 
                       placeholder="Coupon Code" 
                       value={coupon}
                       onChange={(e) => setCoupon(e.target.value)}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded px-8 py-1.5 text-xs text-zinc-200 outline-none focus:border-emerald-500/50 uppercase"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded px-8 py-1.5 text-xs text-zinc-200 outline-none focus:border-emerald-500/50 uppercase disabled:opacity-50"
+                      disabled={planType === "quarterly"}
                     />
                   </div>
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    onClick={handleApplyCoupon}
-                    className="h-[30px] px-3 text-xs bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border-zinc-800"
+                    className="h-8 text-xs px-3 border-zinc-700 bg-zinc-900 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50"
+                    onClick={applyCoupon}
+                    disabled={!coupon || planType === "quarterly"}
                   >
                     Apply
                   </Button>
                 </div>
               ) : (
                 <div className="flex items-center justify-between pt-1 border-t border-zinc-800">
-                  <span className="text-emerald-400 text-xs flex items-center gap-1">
-                    <Tag className="h-3 w-3" /> FLAT50 Applied
+                  <span className="text-emerald-400 text-xs flex items-center gap-1 font-semibold">
+                    <Check className="h-3 w-3" /> {appliedCoupon ? "FLAT50" : ""} Applied
                   </span>
                   <span className="text-emerald-400 text-sm font-semibold">-₹50</span>
                 </div>
               )}
               
-              <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
-                <span className="text-zinc-200 text-sm font-medium">Total due</span>
-                <span className="text-emerald-400 text-lg font-bold">₹{finalPrice}</span>
+              <div className="flex items-center justify-between pt-2 border-t border-zinc-800 mt-2">
+                <span className="text-zinc-100 text-sm font-bold">Total</span>
+                <span className="text-emerald-400 text-lg font-bold">
+                  {planType === "quarterly" ? "₹299" : (isFirstMonth ? "₹1" : (appliedCoupon ? "₹99" : "₹149"))}
+                </span>
               </div>
             </div>
 

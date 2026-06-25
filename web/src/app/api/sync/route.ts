@@ -3,6 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { google } from "googleapis";
 import * as cheerio from "cheerio";
+import pdfParse from "pdf-parse";
 import { haversineMeters } from "@/lib/haversine";
 
 // Server-side geocoding helper (uses private API key)
@@ -75,14 +76,44 @@ export async function POST(request: Request) {
     const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
     // 4. Search for Uber and Rapido receipts
-    // Limiting to 10 for performance in this initial version
-    const searchRes = await gmail.users.messages.list({
-      userId: "me",
-      q: "(from:uber.com OR from:rapido.bike) subject:(receipt OR ride OR trip OR invoice)",
-      maxResults: 20,
-    });
+    // Accept optional fetchSince date from request body to limit how far back we fetch
+    let fetchSince: string | null = null;
+    try {
+      const body = await request.json();
+      if (body?.fetchSince) fetchSince = body.fetchSince;
+    } catch {
+      // No body or invalid JSON — fetch all
+    }
 
-    const messages = searchRes.data.messages || [];
+    let query = "(from:noreply@uber.com OR from:partner@rapido.bike OR from:shoutout@rapido.bike) subject:(receipt OR ride OR trip OR invoice)";
+    if (fetchSince) {
+      // Gmail accepts after: in YYYY/MM/DD format
+      const sinceDate = new Date(fetchSince);
+      if (!isNaN(sinceDate.getTime())) {
+        const yyyy = sinceDate.getFullYear();
+        const mm = String(sinceDate.getMonth() + 1).padStart(2, "0");
+        const dd = String(sinceDate.getDate()).padStart(2, "0");
+        query += ` after:${yyyy}/${mm}/${dd}`;
+      }
+    }
+
+    // Paginate through ALL matching messages (no maxResults cap)
+    const messages: { id?: string | null; threadId?: string | null }[] = [];
+    let nextPageToken: string | undefined = undefined;
+
+    do {
+      const searchRes = await gmail.users.messages.list({
+        userId: "me",
+        q: query,
+        maxResults: 100, // fetch in batches of 100 (Gmail API max per page)
+        pageToken: nextPageToken,
+      });
+
+      const batch = searchRes.data.messages || [];
+      messages.push(...batch);
+      nextPageToken = searchRes.data.nextPageToken ?? undefined;
+    } while (nextPageToken);
+
     let syncedCount = 0;
 
     // 5. Parse each message
@@ -114,19 +145,24 @@ export async function POST(request: Request) {
       if (from.toLowerCase().includes("rapido")) service = "rapido";
 
       // Check for PDF attachments (Rapido) or Links (Uber)
-      // The FastAPI PDF generator will use the gmail_message_id to download these later.
       let receiptLink = "";
 
       let textData = "";
       let htmlData = "";
+      const pdfAttachments: { attachmentId: string; filename: string }[] = [];
 
-      // Recursive function to extract parts
+      // Recursive function to extract parts (text, html, and PDF attachments)
       const extractParts = (parts: Record<string, any>[]) => {
         for (const p of parts) {
           if (p.mimeType === "text/plain" && p.body?.data) {
             textData += Buffer.from(p.body.data, "base64").toString("utf-8") + "\n";
           } else if (p.mimeType === "text/html" && p.body?.data) {
             htmlData += Buffer.from(p.body.data, "base64").toString("utf-8") + "\n";
+          } else if (p.mimeType === "application/pdf" && p.body?.attachmentId) {
+            pdfAttachments.push({
+              attachmentId: p.body.attachmentId,
+              filename: p.filename || "receipt.pdf",
+            });
           }
           if (p.parts) extractParts(p.parts);
         }
@@ -194,19 +230,127 @@ export async function POST(request: Request) {
         storedSnippet = fullMsg.data.snippet || "";
       }
 
-      const insertResult = await supabase.from("receipts").insert({
-        user_id: user.id,
-        service,
-        amount,
-        currency: "INR",
-        trip_date: tripDate,
-        status: amount > 0 ? "found" : "pending",
-        gmail_message_id: msg.id,
-        email_subject: subject,
-        from_location: fromLocation,
-        to_location: toLocation,
-        raw_email_snippet: storedSnippet,
-      }).select("id").single();
+      // ── Process Uber (HTML) or Rapido (PDFs) ──────────────────────
+      
+      if (pdfAttachments.length > 0 && service === "rapido") {
+        // Handle Rapido multiple PDFs per email
+        for (let i = 0; i < pdfAttachments.length; i++) {
+          const att = pdfAttachments[i];
+          
+          try {
+            const attachmentRes = await gmail.users.messages.attachments.get({
+              userId: "me",
+              messageId: msg.id!,
+              id: att.attachmentId,
+            });
+
+            const pdfBase64 = attachmentRes.data.data;
+            if (!pdfBase64) continue;
+
+            const standardBase64 = pdfBase64.replace(/-/g, "+").replace(/_/g, "/");
+            const pdfBuffer = Buffer.from(standardBase64, "base64");
+
+            // Extract text from PDF to find exact amount and date
+            const pdfData = await pdfParse(pdfBuffer);
+            const pdfText = pdfData.text;
+
+            // Regex for amount and date in PDF
+            const amountMatch = pdfText.match(/(?:Total.*?|Amount.*?)(?:₹|Rs\.?|INR|\$)?\s*([0-9,]+\.[0-9]{2})/i) 
+              || pdfText.match(/(?:₹|Rs\.?|\$)\s*([0-9,]+\.[0-9]{2})/i);
+            
+            let parsedAmount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, "")) : amount;
+
+            const dateMatch = pdfText.match(/(\d{1,2}[\s\-./]+[A-Za-z]{3,9}[\s\-./]+[0-9]{2,4}|\d{2}[\/\-]\d{2}[\/\-]\d{4}|\d{4}[\/\-]\d{2}[\/\-]\d{2})/);
+            let parsedDate = tripDate;
+            if (dateMatch) {
+              const d = new Date(dateMatch[1]);
+              if (!isNaN(d.getTime())) parsedDate = d.toISOString();
+            }
+
+            // Deduplicate: check if this specific ride (by date + amount) already exists
+            const { data: duplicate } = await supabase
+              .from("receipts")
+              .select("id")
+              .eq("user_id", user.id)
+              .eq("service", "rapido")
+              .eq("amount", parsedAmount)
+              .eq("trip_date", parsedDate)
+              .single();
+
+            if (duplicate) continue; // Skip this PDF, we already have it
+
+            // Insert into DB
+            // Add index to msg.id to keep it unique per attachment
+            const uniqueMsgId = `${msg.id}-${i}`;
+            
+            const insertResult = await supabase.from("receipts").insert({
+              user_id: user.id,
+              service,
+              amount: parsedAmount,
+              currency: "INR",
+              trip_date: parsedDate,
+              status: parsedAmount > 0 ? "found" : "pending",
+              gmail_message_id: uniqueMsgId,
+              email_subject: subject,
+              from_location: fromLocation,
+              to_location: toLocation,
+              raw_email_snippet: storedSnippet,
+            }).select("id").single();
+
+            if (!insertResult.error && insertResult.data?.id) {
+              const receiptId = insertResult.data.id;
+              
+              // Upload PDF to Supabase Storage
+              const storagePath = `${user.id}/${receiptId}.pdf`;
+              const { error: uploadError } = await supabase.storage
+                .from("receipts")
+                .upload(storagePath, pdfBuffer, {
+                  contentType: "application/pdf",
+                  upsert: false,
+                });
+
+              if (!uploadError) {
+                await supabase.from("receipts").update({ receipt_pdf_path: storagePath }).eq("id", receiptId);
+              }
+              
+              // Increment count
+              syncedCount++;
+            }
+          } catch (err) {
+            console.error("PDF processing error:", err);
+          }
+        }
+      } else {
+        // Handle Uber (HTML) or fallback logic
+        const { data: duplicate } = await supabase
+          .from("receipts")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("service", service)
+          .eq("amount", amount)
+          .eq("trip_date", tripDate)
+          .single();
+
+        if (duplicate) continue;
+
+        const insertResult = await supabase.from("receipts").insert({
+          user_id: user.id,
+          service,
+          amount,
+          currency: "INR",
+          trip_date: tripDate,
+          status: amount > 0 ? "found" : "pending",
+          gmail_message_id: msg.id,
+          email_subject: subject,
+          from_location: fromLocation,
+          to_location: toLocation,
+          raw_email_snippet: storedSnippet,
+        }).select("id").single();
+
+        if (!insertResult.error && insertResult.data?.id) {
+          syncedCount++;
+        }
+      }
 
       // ── Location tagging ───────────────────────────────────────
       if (!insertResult.error && insertResult.data?.id) {

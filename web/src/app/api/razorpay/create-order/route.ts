@@ -15,19 +15,19 @@ export async function POST(req: NextRequest) {
     try {
       const body = await req.json();
       couponCode = body.couponCode;
+      planType = body.planType || "monthly";
     } catch (e) {
       // ignore JSON parse error if body is empty
     }
 
-    let amount = 14900; // 149 INR in paise
-    if (couponCode && couponCode.toUpperCase() === "FIRSTMONTH") {
-      amount = 100; // 1 INR in paise (99% off)
-    } else if (couponCode && couponCode.toUpperCase() === "FLAT50") {
-      amount = 9900; // 99 INR in paise
-    }
-
     if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
       return NextResponse.json({ error: "Razorpay credentials not configured" }, { status: 500 });
+    }
+
+    const planId = planType === "quarterly" ? process.env.RAZORPAY_PLAN_ID_QUARTERLY : process.env.RAZORPAY_PLAN_ID_MONTHLY;
+
+    if (!planId) {
+      return NextResponse.json({ error: `Razorpay Plan ID not configured for ${planType} plan in .env.local` }, { status: 500 });
     }
 
     const razorpay = new Razorpay({
@@ -35,15 +35,21 @@ export async function POST(req: NextRequest) {
       key_secret: process.env.RAZORPAY_KEY_SECRET,
     });
 
-    const options = {
-      amount,
-      currency: "INR",
-      receipt: `rcpt_${session.user.id.substring(0, 8)}_${Date.now()}`
+    // Subscriptions use a Plan ID instead of a dynamic amount
+    const options: any = {
+      plan_id: planId,
+      customer_notify: 1,
+      total_count: planType === "quarterly" ? 12 : 12, // 12 cycles (3 years for quarterly, 1 year for monthly)
     };
 
-    const order = await razorpay.orders.create(options);
+    // If it's the first month welcome offer, apply the Razorpay Offer ID
+    if (couponCode === "FIRSTMONTH" && process.env.RAZORPAY_OFFER_ID_FIRST_MONTH) {
+      options.offer_id = process.env.RAZORPAY_OFFER_ID_FIRST_MONTH;
+    }
 
-    return NextResponse.json(order);
+    const subscription = await razorpay.subscriptions.create(options);
+
+    return NextResponse.json(subscription);
   } catch (err: any) {
     console.error("Razorpay order creation error:", err);
     const errorMessage = err instanceof Error ? err.message : JSON.stringify(err);

@@ -368,12 +368,14 @@
           {{ ride.from_location }}<span class="route-arrow">&rarr;</span>{{ ride.to_location }}
         </td>
         <td>
-          {% if ride.receipt_link %}
+          {% if ride.has_pdf_attachment %}
+            <span class="proof-link" style="cursor:default;">PDF Attached &darr;</span>
+          {% elif ride.receipt_link %}
             <a class="proof-link" href="{{ ride.receipt_link }}">View Receipt &rarr;</a>
           {% elif ride.email_subject %}
             <span class="proof-email">{{ ride.email_subject }}</span>
           {% else %}
-            <span style="color:#d4d4d8;">—</span>
+            <span style="color:#d4d4d8;">&mdash;</span>
           {% endif %}
         </td>
         <td class="col-amount">{{ ride.amount }}</td>

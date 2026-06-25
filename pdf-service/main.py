@@ -86,6 +86,22 @@ def _merge_pdfs(base_pdf: bytes, extra_pdfs: list[bytes]) -> bytes:
         return base_pdf
 
 
+def _download_storage_pdf(storage_path: str) -> bytes | None:
+    """Download a receipt PDF from Supabase Storage.
+
+    Returns the PDF bytes, or None on failure.
+    """
+    if not supabase or not storage_path:
+        return None
+    try:
+        data = supabase.storage.from_("receipts").download(storage_path)
+        if data and len(data) > 0:
+            return data
+    except Exception as exc:
+        print(f"[storage] Failed to download receipt PDF '{storage_path}': {exc}")
+    return None
+
+
 # ── Background task (async report generation) ─────────────────────────────────
 
 class ReportRequest(BaseModel):
@@ -123,9 +139,40 @@ def generate_pdf_task(req: ReportRequest):
 
         total_amount = sum(float(r.get("amount", 0)) for r in rides)
         formatted_rides = []
+        email_html_pages: list[str] = []
+        storage_pdf_pages: list[bytes] = []
+
         for r in rides:
             snippet = r.get("raw_email_snippet") or ""
-            receipt_link = snippet if snippet.startswith("http") else None
+            pdf_path = r.get("receipt_pdf_path") or ""
+            service = (r.get("service") or "").lower()
+
+            receipt_link = None
+            has_pdf_attachment = False
+
+            if pdf_path:
+                # Receipt has a PDF attachment stored in Supabase Storage
+                has_pdf_attachment = True
+                pdf_data = _download_storage_pdf(pdf_path)
+                if pdf_data:
+                    storage_pdf_pages.append(pdf_data)
+            elif snippet.startswith("<"):
+                # Full HTML email body — queue for Playwright rendering
+                email_html_pages.append(snippet)
+                if service == "uber":
+                    try:
+                        import re
+                        match = re.search(
+                            r'href=["\']([^"\' ]*(?:receipt|invoice)[^"\' ]*)["\']',
+                            snippet, re.IGNORECASE
+                        )
+                        if match:
+                            receipt_link = match.group(1)
+                    except Exception:
+                        pass
+            elif snippet.startswith("http"):
+                receipt_link = snippet
+
             formatted_rides.append({
                 "date": r.get("trip_date"),
                 "service": r.get("service"),
@@ -134,6 +181,7 @@ def generate_pdf_task(req: ReportRequest):
                 "amount": f"{r.get('currency', 'INR')} {r.get('amount')}",
                 "receipt_link": receipt_link,
                 "email_subject": r.get("email_subject"),
+                "has_pdf_attachment": has_pdf_attachment,
             })
 
         template = env.get_template("report.html")
@@ -146,12 +194,37 @@ def generate_pdf_task(req: ReportRequest):
             ride_count=len(rides),
         )
 
-        pdf_bytes = HTML(string=html_out).write_pdf()
+        summary_pdf = HTML(string=html_out).write_pdf()
+
+        # ── Merge receipt pages into the report ─────────────────────────
+        final_pdf = summary_pdf
+        try:
+            all_receipt_pages: list[bytes] = []
+
+            # 1. Render HTML email bodies via Playwright
+            if email_html_pages and _PLAYWRIGHT_AVAILABLE:
+                for html_email in email_html_pages:
+                    page_pdf = _render_html_to_pdf_page(html_email)
+                    if page_pdf:
+                        all_receipt_pages.append(page_pdf)
+
+            # 2. Add downloaded PDF attachments from Supabase Storage
+            all_receipt_pages.extend(storage_pdf_pages)
+
+            if all_receipt_pages and _PYPDF_AVAILABLE:
+                final_pdf = _merge_pdfs(summary_pdf, all_receipt_pages)
+                print(
+                    f"[generate] Appended {len(all_receipt_pages)} receipt "
+                    f"page(s) to report {req.report_id}."
+                )
+        except Exception as exc:
+            print(f"[generate] Receipt merge step failed (non-fatal): {exc}")
+            final_pdf = summary_pdf
 
         file_path = f"{req.user_id}/{req.year}_{req.month}_{uuid.uuid4().hex[:8]}.pdf"
 
         supabase.storage.from_("reports").upload(
-            file=pdf_bytes,
+            file=final_pdf,
             path=file_path,
             file_options={"content-type": "application/pdf"},
         )
@@ -204,15 +277,24 @@ def generate_direct(req: DirectReportRequest):
     total_amount = sum(float(r.get("amount", 0)) for r in rides)
     formatted_rides = []
     email_html_pages: list[str] = []
+    storage_pdf_pages: list[bytes] = []
 
     for r in rides:
         snippet = r.get("raw_email_snippet") or ""
+        pdf_path = r.get("receipt_pdf_path") or ""
         service = (r.get("service") or "").lower()
 
         receipt_link = None
         raw_email_html = None
+        has_pdf_attachment = False
 
-        if snippet.startswith("<"):
+        if pdf_path:
+            # Receipt has a PDF attachment stored in Supabase Storage
+            has_pdf_attachment = True
+            pdf_data = _download_storage_pdf(pdf_path)
+            if pdf_data:
+                storage_pdf_pages.append(pdf_data)
+        elif snippet.startswith("<"):
             # Full HTML email — queue for Playwright receipt rendering
             raw_email_html = snippet
             # For Uber: extract the receipt download link so the summary
@@ -243,6 +325,7 @@ def generate_direct(req: DirectReportRequest):
                 "amount": f"{r.get('currency', 'INR')} {r.get('amount')}",
                 "receipt_link": receipt_link,
                 "email_subject": r.get("email_subject"),
+                "has_pdf_attachment": has_pdf_attachment,
             }
         )
 
@@ -262,31 +345,36 @@ def generate_direct(req: DirectReportRequest):
     # ── Generate the summary PDF ──────────────────────────────────────────────
     summary_pdf = HTML(string=html_out).write_pdf()
 
-    # ── Email-to-image: render each raw HTML email as a PDF page ─────────────
+    # ── Merge all receipt pages (HTML-rendered + PDF attachments) ─────────────
     # This entire block is wrapped in try/except so any failure is non-fatal.
     final_pdf = summary_pdf
     try:
-        if email_html_pages and _PLAYWRIGHT_AVAILABLE and _PYPDF_AVAILABLE:
-            rendered_pages: list[bytes] = []
+        all_receipt_pages: list[bytes] = []
+
+        # 1. Render HTML email bodies via Playwright
+        if email_html_pages and _PLAYWRIGHT_AVAILABLE:
             for html_email in email_html_pages:
                 page_pdf = _render_html_to_pdf_page(html_email)
                 if page_pdf:
-                    rendered_pages.append(page_pdf)
+                    all_receipt_pages.append(page_pdf)
 
-            if rendered_pages:
-                final_pdf = _merge_pdfs(summary_pdf, rendered_pages)
-                print(
-                    f"[generate-direct] Appended {len(rendered_pages)} email "
-                    f"receipt page(s) to the report."
-                )
+        # 2. Add downloaded PDF attachments from Supabase Storage
+        all_receipt_pages.extend(storage_pdf_pages)
+
+        if all_receipt_pages and _PYPDF_AVAILABLE:
+            final_pdf = _merge_pdfs(summary_pdf, all_receipt_pages)
+            print(
+                f"[generate-direct] Appended {len(all_receipt_pages)} receipt "
+                f"page(s) to the report."
+            )
         else:
             if not _PLAYWRIGHT_AVAILABLE:
                 print("[generate-direct] Playwright not available – skipping email rendering.")
             if not _PYPDF_AVAILABLE:
                 print("[generate-direct] pypdf not available – skipping PDF merge.")
     except Exception as exc:
-        # Non-fatal: return summary PDF even if email rendering fails
-        print(f"[generate-direct] Email-to-image step failed (non-fatal): {exc}")
+        # Non-fatal: return summary PDF even if merging fails
+        print(f"[generate-direct] Receipt merge step failed (non-fatal): {exc}")
         final_pdf = summary_pdf
 
     return Response(content=final_pdf, media_type="application/pdf")
