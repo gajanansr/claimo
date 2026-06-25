@@ -3,7 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { google } from "googleapis";
 import * as cheerio from "cheerio";
-import pdfParse from "pdf-parse";
+const pdfParse = require("pdf-parse");
 import { haversineMeters } from "@/lib/haversine";
 
 // Server-side geocoding helper (uses private API key)

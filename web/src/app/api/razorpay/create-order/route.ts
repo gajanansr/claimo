@@ -12,6 +12,7 @@ export async function POST(req: NextRequest) {
     }
 
     let couponCode = "";
+    let planType = "monthly";
     try {
       const body = await req.json();
       couponCode = body.couponCode;
