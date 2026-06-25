@@ -39,12 +39,11 @@ export function AddLocationPromo() {
         </CardContent>
       </Card>
 
-      {showLocationPicker && (
-        <LocationPicker
-          onClose={() => setShowLocationPicker(false)}
-          onAdd={handleAdd}
-        />
-      )}
+      <LocationPicker
+        open={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onSaved={handleAdd}
+      />
     </>
   );
 }
