@@ -13,7 +13,6 @@ const withPWA = withPWAInit({
 
 const nextConfig: NextConfig = {
   turbopack: {},
-  serverExternalPackages: ["@napi-rs/canvas", "pdf-parse"],
 };
 
 export default withPWA(nextConfig);

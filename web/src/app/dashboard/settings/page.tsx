@@ -138,6 +138,8 @@ export default function SettingsPage() {
       }
     } catch (err) {
       toast.error("An unexpected error occurred.", { id: toastId });
+    } finally {
+      setConfirmDialog(prev => ({ ...prev, open: false }));
     }
   };
 

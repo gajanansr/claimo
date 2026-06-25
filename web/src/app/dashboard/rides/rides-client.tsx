@@ -259,7 +259,9 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
                           {String(ride.location_tag)}
                         </span>
                       ) : (
-                        <span className="text-[11px] text-zinc-600 italic">No tag</span>
+                        <span className="text-[11px] text-zinc-400 bg-zinc-900 border border-zinc-800 rounded px-2 py-0.5 font-medium inline-block whitespace-nowrap">
+                          Others
+                        </span>
                       )}
                     </div>
                   </TableCell>
