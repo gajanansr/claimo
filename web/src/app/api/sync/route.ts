@@ -271,7 +271,7 @@ export async function POST(request: Request) {
             const pdfBuffer = Buffer.from(standardBase64, "base64");
 
             // Extract text from PDF to find exact amount and date
-            const pdfParse = require("pdf-parse");
+            const pdfParse = require("pdf-parse/lib/pdf-parse.js");
             const pdfData = await pdfParse(pdfBuffer);
             const pdfText = pdfData.text;
             
