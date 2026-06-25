@@ -218,9 +218,9 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
               </TableHead>
               <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Date</TableHead>
               <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Service</TableHead>
-              <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Route</TableHead>
+              <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Location Tag</TableHead>
               <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest">Amount</TableHead>
-              <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest pr-5">Status</TableHead>
+              <TableHead className="text-zinc-600 font-semibold text-[10px] uppercase tracking-widest pr-5">Route</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -253,12 +253,13 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
                     </div>
                   </TableCell>
                   <TableCell className="py-3">
-                    <div className="text-zinc-500 text-[12px] whitespace-nowrap overflow-x-auto block max-w-[180px] scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent pb-1">
-                      <span>{String(ride.from_location || "Unknown")} <span className="text-zinc-700 mx-1">→</span> {String(ride.to_location || "Unknown")}</span>
-                      {(ride.location_tag as string | null | undefined) && (
-                        <span className="text-[10px] text-emerald-400 bg-emerald-950/30 border border-emerald-900/50 rounded px-1.5 py-0.5 font-medium ml-1.5 inline-block whitespace-nowrap">
+                    <div className="text-zinc-500 text-[12px] whitespace-nowrap overflow-hidden text-ellipsis max-w-[120px]">
+                      {(ride.location_tag as string | null | undefined) ? (
+                        <span className="text-[11px] text-emerald-400 bg-emerald-950/30 border border-emerald-900/50 rounded px-2 py-0.5 font-medium inline-block whitespace-nowrap">
                           {String(ride.location_tag)}
                         </span>
+                      ) : (
+                        <span className="text-[11px] text-zinc-600 italic">No tag</span>
                       )}
                     </div>
                   </TableCell>
@@ -266,9 +267,9 @@ export function RidesClient({ initialRides }: { initialRides: Record<string, unk
                     ₹{Number(ride.amount).toFixed(2)}
                   </TableCell>
                   <TableCell className="pr-5 py-3">
-                    <Badge variant="outline" className={`${sc.text} ${sc.border} ${sc.bg} font-normal text-[11px] px-2 py-0.5 rounded capitalize`}>
-                      {status === 'found' ? 'Receipt Found' : status}
-                    </Badge>
+                    <div className="text-zinc-500 text-[11px] whitespace-nowrap overflow-x-auto block max-w-[200px] scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent pb-1">
+                      <span>{String(ride.from_location || "Unknown")} <span className="text-zinc-700 mx-1">→</span> {String(ride.to_location || "Unknown")}</span>
+                    </div>
                   </TableCell>
                 </TableRow>
               );

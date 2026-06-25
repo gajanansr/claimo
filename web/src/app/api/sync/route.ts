@@ -85,7 +85,7 @@ export async function POST(request: Request) {
       // No body or invalid JSON — fetch all
     }
 
-    let query = "(from:noreply@uber.com OR from:partner@rapido.bike OR from:shoutout@rapido.bike) (subject:receipt OR subject:ride OR subject:trip OR subject:invoice OR filename:pdf)";
+    let query = "(from:uber.com OR from:rapido.bike) (subject:receipt OR subject:ride OR subject:trip OR subject:invoice OR filename:pdf)";
     if (fetchSince) {
       // Gmail accepts after: in YYYY/MM/DD format
       const sinceDate = new Date(fetchSince);
@@ -325,6 +325,10 @@ export async function POST(request: Request) {
         }
       } else {
         // Handle Uber (HTML) or fallback logic
+        
+        // Skip junk/promo Rapido emails that don't have attachments or amounts
+        if (amount === 0 && service === "rapido") continue;
+
         const { data: duplicate } = await supabase
           .from("receipts")
           .select("id")
