@@ -3,7 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { google } from "googleapis";
 import * as cheerio from "cheerio";
-const pdfParse = require("pdf-parse");
+// Removed top-level pdfParse require to fix Next.js build error
 import { haversineMeters } from "@/lib/haversine";
 
 // Server-side geocoding helper (uses private API key)
@@ -231,6 +231,7 @@ export async function POST(request: Request) {
       }
 
       // ── Process Uber (HTML) or Rapido (PDFs) ──────────────────────
+      const insertedReceiptIds: string[] = [];
       
       if (pdfAttachments.length > 0 && service === "rapido") {
         // Handle Rapido multiple PDFs per email
@@ -251,6 +252,7 @@ export async function POST(request: Request) {
             const pdfBuffer = Buffer.from(standardBase64, "base64");
 
             // Extract text from PDF to find exact amount and date
+            const pdfParse = require("pdf-parse");
             const pdfData = await pdfParse(pdfBuffer);
             const pdfText = pdfData.text;
 
@@ -313,7 +315,7 @@ export async function POST(request: Request) {
                 await supabase.from("receipts").update({ receipt_pdf_path: storagePath }).eq("id", receiptId);
               }
               
-              // Increment count
+              insertedReceiptIds.push(receiptId);
               syncedCount++;
             }
           } catch (err) {
@@ -348,14 +350,13 @@ export async function POST(request: Request) {
         }).select("id").single();
 
         if (!insertResult.error && insertResult.data?.id) {
+          insertedReceiptIds.push(insertResult.data.id);
           syncedCount++;
         }
       }
 
       // ── Location tagging ───────────────────────────────────────
-      if (!insertResult.error && insertResult.data?.id) {
-        const receiptId = insertResult.data.id;
-
+      if (insertedReceiptIds.length > 0) {
         // Fetch saved user locations
         const { data: userLocations } = await supabase
           .from("user_locations")
@@ -399,12 +400,10 @@ export async function POST(request: Request) {
           if (locationTag) updatePayload.location_tag = locationTag;
 
           if (Object.keys(updatePayload).length > 0) {
-            await supabase.from("receipts").update(updatePayload).eq("id", receiptId);
+            await supabase.from("receipts").update(updatePayload).in("id", insertedReceiptIds);
           }
         }
       }
-
-      syncedCount++;
     }
 
     return NextResponse.json({ success: true, syncedCount });
