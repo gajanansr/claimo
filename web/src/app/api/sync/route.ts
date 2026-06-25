@@ -149,7 +149,7 @@ export async function POST(request: Request) {
 
       let textData = "";
       let htmlData = "";
-      const pdfAttachments: { attachmentId: string; filename: string }[] = [];
+      const pdfAttachments: { attachmentId?: string; data?: string; filename: string }[] = [];
 
       // Recursive function to extract parts (text, html, and PDF attachments)
       const extractParts = (parts: Record<string, any>[]) => {
@@ -158,11 +158,18 @@ export async function POST(request: Request) {
             textData += Buffer.from(p.body.data, "base64").toString("utf-8") + "\n";
           } else if (p.mimeType === "text/html" && p.body?.data) {
             htmlData += Buffer.from(p.body.data, "base64").toString("utf-8") + "\n";
-          } else if ((p.mimeType === "application/pdf" || (p.filename && p.filename.toLowerCase().endsWith(".pdf"))) && p.body?.attachmentId) {
-            pdfAttachments.push({
-              attachmentId: p.body.attachmentId,
-              filename: p.filename || "receipt.pdf",
-            });
+          } else if (p.mimeType === "application/pdf" || (p.filename && p.filename.toLowerCase().endsWith(".pdf"))) {
+            if (p.body?.attachmentId) {
+              pdfAttachments.push({
+                attachmentId: p.body.attachmentId,
+                filename: p.filename || "receipt.pdf",
+              });
+            } else if (p.body?.data) {
+              pdfAttachments.push({
+                data: p.body.data,
+                filename: p.filename || "receipt.pdf",
+              });
+            }
           }
           if (p.parts) extractParts(p.parts);
         }
@@ -204,9 +211,12 @@ export async function POST(request: Request) {
         }
       }
 
-      // Fallback regex matching for Amount (₹ or Rs. or $)
+      // Fallback regex matching for Amount (₹ or Rs. or INR or $)
       let amount = 0;
-      const amountMatch = cleanText.match(/(?:₹|Rs\.?|\$)\s*([0-9,]+\.[0-9]{2})/i) || subject.match(/(?:₹|Rs\.?|\$)\s*([0-9,]+\.[0-9]{2})/i) || cleanText.match(/(?:₹|Rs\.?|\$)\s*([0-9]+)/i);
+      const amountMatch = cleanText.match(/(?:₹|Rs\.?|INR|\$)\s*([0-9,]+\.[0-9]{2})/i) 
+        || subject.match(/(?:₹|Rs\.?|INR|\$)\s*([0-9,]+\.[0-9]{2})/i) 
+        || cleanText.match(/(?:₹|Rs\.?|INR|\$)\s*([0-9]+)/i)
+        || cleanText.match(/(?:Total|Amount)[\s\S]{1,20}?([0-9,]+\.[0-9]{2})/i);
       
       if (amountMatch) {
         amount = parseFloat(amountMatch[1].replace(/,/g, ""));
@@ -239,13 +249,18 @@ export async function POST(request: Request) {
           const att = pdfAttachments[i];
           
           try {
-            const attachmentRes = await gmail.users.messages.attachments.get({
-              userId: "me",
-              messageId: msg.id!,
-              id: att.attachmentId,
-            });
+            let pdfBase64 = "";
+            if (att.attachmentId) {
+              const attachmentRes = await gmail.users.messages.attachments.get({
+                userId: "me",
+                messageId: msg.id!,
+                id: att.attachmentId,
+              });
+              pdfBase64 = attachmentRes.data.data || "";
+            } else if (att.data) {
+              pdfBase64 = att.data;
+            }
 
-            const pdfBase64 = attachmentRes.data.data;
             if (!pdfBase64) continue;
 
             const standardBase64 = pdfBase64.replace(/-/g, "+").replace(/_/g, "/");
