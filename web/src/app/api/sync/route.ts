@@ -85,7 +85,7 @@ export async function POST(request: Request) {
       // No body or invalid JSON — fetch all
     }
 
-    let query = "(from:noreply@uber.com OR from:partner@rapido.bike OR from:shoutout@rapido.bike) subject:(receipt OR ride OR trip OR invoice)";
+    let query = "(from:noreply@uber.com OR from:partner@rapido.bike OR from:shoutout@rapido.bike) (subject:receipt OR subject:ride OR subject:trip OR subject:invoice OR filename:pdf)";
     if (fetchSince) {
       // Gmail accepts after: in YYYY/MM/DD format
       const sinceDate = new Date(fetchSince);
@@ -158,7 +158,7 @@ export async function POST(request: Request) {
             textData += Buffer.from(p.body.data, "base64").toString("utf-8") + "\n";
           } else if (p.mimeType === "text/html" && p.body?.data) {
             htmlData += Buffer.from(p.body.data, "base64").toString("utf-8") + "\n";
-          } else if (p.mimeType === "application/pdf" && p.body?.attachmentId) {
+          } else if ((p.mimeType === "application/pdf" || (p.filename && p.filename.toLowerCase().endsWith(".pdf"))) && p.body?.attachmentId) {
             pdfAttachments.push({
               attachmentId: p.body.attachmentId,
               filename: p.filename || "receipt.pdf",
@@ -256,9 +256,10 @@ export async function POST(request: Request) {
             const pdfData = await pdfParse(pdfBuffer);
             const pdfText = pdfData.text;
 
-            // Regex for amount and date in PDF
-            const amountMatch = pdfText.match(/(?:Total.*?|Amount.*?)(?:₹|Rs\.?|INR|\$)?\s*([0-9,]+\.[0-9]{2})/i) 
-              || pdfText.match(/(?:₹|Rs\.?|\$)\s*([0-9,]+\.[0-9]{2})/i);
+            // Regex for amount and date in PDF (more generous to catch different invoice formats)
+            const amountMatch = pdfText.match(/(?:Total.*?|Amount.*?|Grand Total.*?)(?:₹|Rs\.?|INR|\$)?\s*([0-9,]+\.[0-9]{2})/i) 
+              || pdfText.match(/(?:₹|Rs\.?|INR|\$)\s*([0-9,]+\.[0-9]{2})/i)
+              || pdfText.match(/(?:Total|Amount)[\s\S]{1,30}?([0-9,]+\.[0-9]{2})/i); // Generous fallback
             
             let parsedAmount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, "")) : amount;
 

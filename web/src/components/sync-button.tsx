@@ -62,6 +62,11 @@ export function SyncButton({ className, variant = "ghost", children, iconOnly = 
       const data = await res.json();
       
       if (!res.ok) {
+        if (res.status === 401) {
+          toast.error("Gmail session expired. Please sign in again to refresh your connection.");
+          router.push("/auth");
+          return;
+        }
         toast.error(data.error || "Failed to sync");
         return;
       }
