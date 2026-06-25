@@ -102,7 +102,7 @@ export async function POST(request: Request) {
     let nextPageToken: string | undefined = undefined;
 
     do {
-      const searchRes = await gmail.users.messages.list({
+      const searchRes: any = await gmail.users.messages.list({
         userId: "me",
         q: query,
         maxResults: 100, // fetch in batches of 100 (Gmail API max per page)
