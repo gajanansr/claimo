@@ -243,7 +243,11 @@ export async function POST(request: Request) {
       // ── Process Uber (HTML) or Rapido (PDFs) ──────────────────────
       const insertedReceiptIds: string[] = [];
       
+      console.log(`\n--- Processing Email: ${subject} ---`);
+      console.log(`Service: ${service}, Attachments: ${pdfAttachments.length}`);
+
       if (pdfAttachments.length > 0 && service === "rapido") {
+        console.log("-> Processing as Rapido PDF");
         // Handle Rapido multiple PDFs per email
         for (let i = 0; i < pdfAttachments.length; i++) {
           const att = pdfAttachments[i];
@@ -267,9 +271,12 @@ export async function POST(request: Request) {
             const pdfBuffer = Buffer.from(standardBase64, "base64");
 
             // Extract text from PDF to find exact amount and date
-            const pdfParse = require("pdf-parse");
-            const pdfData = await pdfParse(pdfBuffer);
-            const pdfText = pdfData.text;
+            const { PDFParse } = require("pdf-parse");
+            const parser = new PDFParse(pdfBuffer);
+            await parser.load();
+            const pdfText = await parser.getText();
+            
+            console.log(`-> Extracted PDF Text (first 100 chars): ${pdfText.substring(0, 100).replace(/\n/g, " ")}`);
 
             // Regex for amount and date in PDF (more generous to catch different invoice formats)
             const amountMatch = pdfText.match(/(?:Total.*?|Amount.*?|Grand Total.*?)(?:₹|Rs\.?|INR|\$)?\s*([0-9,]+\.[0-9]{2})/i) 
@@ -277,6 +284,7 @@ export async function POST(request: Request) {
               || pdfText.match(/(?:Total|Amount)[\s\S]{1,30}?([0-9,]+\.[0-9]{2})/i); // Generous fallback
             
             let parsedAmount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, "")) : amount;
+            console.log(`-> Parsed Amount: ${parsedAmount} (from Match: ${amountMatch ? amountMatch[1] : 'null'}, HTML Amount: ${amount})`);
 
             const dateMatch = pdfText.match(/(\d{1,2}[\s\-./]+[A-Za-z]{3,9}[\s\-./]+[0-9]{2,4}|\d{2}[\/\-]\d{2}[\/\-]\d{4}|\d{4}[\/\-]\d{2}[\/\-]\d{2})/);
             let parsedDate = tripDate;
@@ -295,7 +303,10 @@ export async function POST(request: Request) {
               .eq("trip_date", parsedDate)
               .single();
 
-            if (duplicate) continue; // Skip this PDF, we already have it
+            if (duplicate) {
+              console.log(`-> Skipped! Duplicate ride found in DB for ${parsedAmount} on ${parsedDate}. DB ID: ${duplicate.id}`);
+              continue; // Skip this PDF, we already have it
+            }
 
             // Insert into DB
             // Add index to msg.id to keep it unique per attachment
@@ -339,10 +350,14 @@ export async function POST(request: Request) {
           }
         }
       } else {
+        console.log("-> Processing as HTML Fallback");
         // Handle Uber (HTML) or fallback logic
         
         // Skip junk/promo Rapido emails that don't have attachments or amounts
-        if (amount === 0 && service === "rapido") continue;
+        if (amount === 0 && service === "rapido") {
+           console.log("-> Skipped! Rapido HTML has 0 amount. Deemed as promo/junk.");
+           continue;
+        }
 
         const { data: duplicate } = await supabase
           .from("receipts")
