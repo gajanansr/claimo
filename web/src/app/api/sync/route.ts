@@ -120,14 +120,16 @@ export async function POST(request: Request) {
     for (const msg of messages) {
       if (!msg.id) continue;
       
-      // Check if we already have this receipt to avoid duplicate work
-      const { data: existing } = await supabase
+      // Check if we already have this receipt to avoid duplicate work.
+      // For multi-PDF emails we store ids like "msgId-0", "msgId-1", etc.
+      // So we check both the exact id AND the prefix pattern.
+      const { data: existingExact } = await supabase
         .from("receipts")
         .select("id")
         .eq("gmail_message_id", msg.id)
         .single();
         
-      if (existing) continue;
+      if (existingExact) continue;
 
       const fullMsg = await gmail.users.messages.get({
         userId: "me",
@@ -247,10 +249,32 @@ export async function POST(request: Request) {
       console.log(`Service: ${service}, Attachments: ${pdfAttachments.length}`);
 
       if (pdfAttachments.length > 0 && service === "rapido") {
-        console.log("-> Processing as Rapido PDF");
-        // Handle Rapido multiple PDFs per email
+        console.log(`-> Processing ${pdfAttachments.length} Rapido PDF(s)`);
+
+        // For multi-PDF emails, check how many we already processed
+        // so we can skip already-stored ones by index
+        const { data: alreadyStored } = await supabase
+          .from("receipts")
+          .select("gmail_message_id")
+          .like("gmail_message_id", `${msg.id}-%`);
+        
+        const storedIndices = new Set(
+          (alreadyStored || []).map((r) => {
+            const parts = String(r.gmail_message_id).split("-");
+            return parseInt(parts[parts.length - 1], 10);
+          }).filter((n) => !isNaN(n))
+        );
+
+        console.log(`-> Already stored ${storedIndices.size} PDF(s) from this email`);
+
         for (let i = 0; i < pdfAttachments.length; i++) {
           const att = pdfAttachments[i];
+
+          // Skip if we already processed this specific attachment index
+          if (storedIndices.has(i)) {
+            console.log(`-> PDF [${i}/${pdfAttachments.length}] "${att.filename}" — already stored, skipping`);
+            continue;
+          }
           
           try {
             let pdfBase64 = "";
@@ -265,32 +289,66 @@ export async function POST(request: Request) {
               pdfBase64 = att.data;
             }
 
-            if (!pdfBase64) continue;
+            if (!pdfBase64) {
+              console.log(`-> PDF [${i}/${pdfAttachments.length}] "${att.filename}" — no data, skipping`);
+              continue;
+            }
 
             const standardBase64 = pdfBase64.replace(/-/g, "+").replace(/_/g, "/");
             const pdfBuffer = Buffer.from(standardBase64, "base64");
+
+            console.log(`-> PDF [${i}/${pdfAttachments.length}] "${att.filename}" — ${pdfBuffer.length} bytes`);
 
             // Extract text from PDF to find exact amount and date
             const pdfParse = require("pdf-parse/lib/pdf-parse.js");
             const pdfData = await pdfParse(pdfBuffer);
             const pdfText = pdfData.text;
             
-            console.log(`-> Extracted PDF Text (first 100 chars): ${pdfText.substring(0, 100).replace(/\n/g, " ")}`);
+            console.log(`-> PDF [${i}] Extracted text (first 200 chars): ${pdfText.substring(0, 200).replace(/\n/g, " ")}`);
 
-            // Regex for amount and date in PDF (more generous to catch different invoice formats)
-            const amountMatch = pdfText.match(/(?:Total.*?|Amount.*?|Grand Total.*?)(?:₹|Rs\.?|INR|\$)?\s*([0-9,]+\.[0-9]{2})/i) 
-              || pdfText.match(/(?:₹|Rs\.?|INR|\$)\s*([0-9,]+\.[0-9]{2})/i)
-              || pdfText.match(/(?:Total|Amount)[\s\S]{1,30}?([0-9,]+\.[0-9]{2})/i); // Generous fallback
+            // ── Extract amount from PDF text ──
+            const pdfAmountMatch = pdfText.match(/(?:Total\s*(?:Fare|Amount|Bill|Charges)?)[:\s]*(?:₹|Rs\.?|INR)?\s*([0-9,]+(?:\.[0-9]{2})?)/i)
+              || pdfText.match(/(?:Grand Total)[:\s]*(?:₹|Rs\.?|INR)?\s*([0-9,]+(?:\.[0-9]{2})?)/i)
+              || pdfText.match(/(?:₹|Rs\.?|INR)\s*([0-9,]+\.[0-9]{2})/i)
+              || pdfText.match(/(?:₹|Rs\.?|INR)\s*([0-9,]+)/i)
+              || pdfText.match(/(?:Amount|Total|Fare)[:\s\S]{1,30}?([0-9,]+\.[0-9]{2})/i);
             
-            let parsedAmount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, "")) : amount;
-            console.log(`-> Parsed Amount: ${parsedAmount} (from Match: ${amountMatch ? amountMatch[1] : 'null'}, HTML Amount: ${amount})`);
+            let parsedAmount = pdfAmountMatch ? parseFloat(pdfAmountMatch[1].replace(/,/g, "")) : 0;
+            
+            // If we got 0 from PDF, try the email-level amount as fallback (only for single-PDF emails)
+            if (parsedAmount === 0 && pdfAttachments.length === 1) {
+              parsedAmount = amount;
+            }
+            
+            console.log(`-> PDF [${i}] Amount: ₹${parsedAmount} (match: ${pdfAmountMatch ? pdfAmountMatch[0].trim() : 'none'})`);
 
-            const dateMatch = pdfText.match(/(\d{1,2}[\s\-./]+[A-Za-z]{3,9}[\s\-./]+[0-9]{2,4}|\d{2}[\/\-]\d{2}[\/\-]\d{4}|\d{4}[\/\-]\d{2}[\/\-]\d{2})/);
+            // Skip PDFs with 0 amount — likely not actual receipts
+            if (parsedAmount === 0) {
+              console.log(`-> PDF [${i}] Skipped — zero amount`);
+              continue;
+            }
+
+            // ── Extract date from PDF text ──
+            const dateMatch = pdfText.match(/(\d{1,2}[\s\-./]+[A-Za-z]{3,9}[\s\-./]+[0-9]{2,4})/i)
+              || pdfText.match(/(\d{2}[\/\-]\d{2}[\/\-]\d{4})/i)
+              || pdfText.match(/(\d{4}[\/\-]\d{2}[\/\-]\d{2})/i)
+              || pdfText.match(/(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})/i);
             let parsedDate = tripDate;
             if (dateMatch) {
               const d = new Date(dateMatch[1]);
               if (!isNaN(d.getTime())) parsedDate = d.toISOString();
             }
+            console.log(`-> PDF [${i}] Date: ${parsedDate}`);
+
+            // ── Extract locations from PDF text ──
+            let pdfFrom = fromLocation;
+            let pdfTo = toLocation;
+            
+            // Try to find pickup/drop from PDF text
+            const pickupMatch = pdfText.match(/(?:Pickup|Pick-up|From|Start)[:\s]+([^\n]{5,80})/i);
+            const dropMatch = pdfText.match(/(?:Drop|Drop-off|To|End|Destination)[:\s]+([^\n]{5,80})/i);
+            if (pickupMatch) pdfFrom = pickupMatch[1].trim();
+            if (dropMatch) pdfTo = dropMatch[1].trim();
 
             // Deduplicate: check if this specific ride (by date + amount) already exists
             const { data: duplicate } = await supabase
@@ -303,12 +361,11 @@ export async function POST(request: Request) {
               .single();
 
             if (duplicate) {
-              console.log(`-> Skipped! Duplicate ride found in DB for ${parsedAmount} on ${parsedDate}. DB ID: ${duplicate.id}`);
-              continue; // Skip this PDF, we already have it
+              console.log(`-> PDF [${i}] Skipped — duplicate ride (₹${parsedAmount} on ${parsedDate})`);
+              continue;
             }
 
-            // Insert into DB
-            // Add index to msg.id to keep it unique per attachment
+            // Insert into DB with unique message id per attachment
             const uniqueMsgId = `${msg.id}-${i}`;
             
             const insertResult = await supabase.from("receipts").insert({
@@ -317,16 +374,22 @@ export async function POST(request: Request) {
               amount: parsedAmount,
               currency: "INR",
               trip_date: parsedDate,
-              status: parsedAmount > 0 ? "found" : "pending",
+              status: "found",
               gmail_message_id: uniqueMsgId,
               email_subject: subject,
-              from_location: fromLocation,
-              to_location: toLocation,
+              from_location: pdfFrom,
+              to_location: pdfTo,
               raw_email_snippet: storedSnippet,
             }).select("id").single();
 
-            if (!insertResult.error && insertResult.data?.id) {
+            if (insertResult.error) {
+              console.error(`-> PDF [${i}] Insert error:`, insertResult.error.message);
+              continue;
+            }
+            
+            if (insertResult.data?.id) {
               const receiptId = insertResult.data.id;
+              console.log(`-> PDF [${i}] Inserted receipt: ${receiptId}`);
               
               // Upload PDF to Supabase Storage
               const storagePath = `${user.id}/${receiptId}.pdf`;
@@ -339,15 +402,19 @@ export async function POST(request: Request) {
 
               if (!uploadError) {
                 await supabase.from("receipts").update({ receipt_pdf_path: storagePath }).eq("id", receiptId);
+              } else {
+                console.error(`-> PDF [${i}] Storage upload error:`, uploadError.message);
               }
               
               insertedReceiptIds.push(receiptId);
               syncedCount++;
             }
           } catch (err) {
-            console.error("PDF processing error:", err);
+            console.error(`PDF [${i}] processing error:`, err);
           }
         }
+
+        console.log(`-> Email done: synced ${insertedReceiptIds.length}/${pdfAttachments.length} PDFs`);
       } else {
         console.log("-> Processing as HTML Fallback");
         // Handle Uber (HTML) or fallback logic
