@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Loader2, Calendar } from "lucide-react";
+import { RefreshCw, Loader2, Calendar, CheckCircle2, AlertCircle, Mail, FileText } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -40,17 +40,35 @@ function getDateFromOption(option: string): string | null {
   }
 }
 
+type SyncProgress = {
+  current: number;
+  total: number;
+  synced: number;
+  skipped: number;
+  service?: string;
+  subject?: string;
+};
+
 export function SyncButton({ className, variant = "ghost", children, iconOnly = false }: { className?: string, variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link" | null | undefined, children?: React.ReactNode, iconOnly?: boolean }) {
   const [loading, setLoading] = useState(false);
   const [showLocationWarning, setShowLocationWarning] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedOption, setSelectedOption] = useState("all");
   const [customDate, setCustomDate] = useState("");
+  const [showSyncOverlay, setShowSyncOverlay] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("Connecting to Gmail...");
+  const [syncPhase, setSyncPhase] = useState<"connecting" | "scanning" | "processing" | "done" | "error">("connecting");
+  const [syncProgress, setSyncProgress] = useState<SyncProgress>({ current: 0, total: 0, synced: 0, skipped: 0 });
   const router = useRouter();
 
   const performSync = async (fetchSince: string | null) => {
     try {
       setLoading(true);
+      setShowSyncOverlay(true);
+      setSyncPhase("connecting");
+      setSyncStatus("Connecting to Gmail...");
+      setSyncProgress({ current: 0, total: 0, synced: 0, skipped: 0 });
+
       const body: Record<string, string> = {};
       if (fetchSince) body.fetchSince = fetchSince;
 
@@ -59,22 +77,119 @@ export function SyncButton({ className, variant = "ghost", children, iconOnly = 
         headers: { "Content-Type": "application/json" },
         body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
       });
-      const data = await res.json();
-      
+
       if (!res.ok) {
         if (res.status === 401) {
-          toast.error("Gmail session expired. Please sign in again to refresh your connection.");
-          router.push("/auth");
+          setSyncPhase("error");
+          setSyncStatus("Gmail session expired. Redirecting...");
+          setTimeout(() => {
+            setShowSyncOverlay(false);
+            router.push("/auth");
+          }, 1500);
           return;
         }
-        toast.error(data.error || "Failed to sync");
+        const data = await res.json().catch(() => ({ error: "Sync failed" }));
+        setSyncPhase("error");
+        setSyncStatus(data.error || "Sync failed");
+        setTimeout(() => setShowSyncOverlay(false), 2500);
         return;
       }
-      
-      toast.success(`Sync complete! Found ${data.syncedCount} new rides.`);
-      router.refresh(); // Refresh Server Components to show new data
+
+      if (!res.body) {
+        // Fallback for non-streaming response
+        const data = await res.json();
+        setSyncPhase("done");
+        setSyncStatus(`Sync complete! Found ${data.syncedCount} new rides.`);
+        setSyncProgress(p => ({ ...p, synced: data.syncedCount }));
+        setTimeout(() => {
+          setShowSyncOverlay(false);
+          router.refresh();
+        }, 2000);
+        return;
+      }
+
+      // Read SSE stream
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+
+          try {
+            const event = JSON.parse(jsonStr);
+
+            switch (event.type) {
+              case "scanning":
+                setSyncPhase("scanning");
+                setSyncStatus(`Scanning Gmail... found ${event.found} emails so far`);
+                break;
+
+              case "scan_complete":
+                setSyncPhase("processing");
+                setSyncStatus(`Found ${event.total} emails to process`);
+                setSyncProgress(p => ({ ...p, total: event.total }));
+                break;
+
+              case "processing":
+                setSyncPhase("processing");
+                setSyncProgress(p => ({
+                  ...p,
+                  current: event.current,
+                  total: event.total,
+                  service: event.service,
+                  subject: event.subject,
+                }));
+                setSyncStatus(`Processing ${event.current}/${event.total}: ${event.subject?.substring(0, 50) || "email"}...`);
+                break;
+
+              case "pdf_progress":
+                setSyncStatus(`PDF ${event.pdfIndex}/${event.pdfTotal} from: ${event.subject?.substring(0, 40) || "email"}...`);
+                break;
+
+              case "synced":
+                setSyncProgress(p => ({ ...p, synced: p.synced + 1 }));
+                break;
+
+              case "skipped":
+                setSyncProgress(p => ({ ...p, skipped: p.skipped + 1 }));
+                break;
+
+              case "done":
+                setSyncPhase("done");
+                setSyncProgress(p => ({ ...p, synced: event.syncedCount, current: p.total }));
+                setSyncStatus(`Sync complete! Found ${event.syncedCount} new rides.`);
+                setTimeout(() => {
+                  setShowSyncOverlay(false);
+                  router.refresh();
+                }, 2200);
+                break;
+
+              case "error":
+                setSyncPhase("error");
+                setSyncStatus(event.message || "An error occurred");
+                setTimeout(() => setShowSyncOverlay(false), 3000);
+                break;
+            }
+          } catch {
+            // Ignore malformed JSON lines
+          }
+        }
+      }
     } catch {
-      toast.error("An unexpected error occurred.");
+      setSyncPhase("error");
+      setSyncStatus("Network error. Please try again.");
+      setTimeout(() => setShowSyncOverlay(false), 2500);
     } finally {
       setLoading(false);
     }
@@ -116,6 +231,8 @@ export function SyncButton({ className, variant = "ghost", children, iconOnly = 
     }
   };
 
+  const progressPct = syncProgress.total > 0 ? Math.round((syncProgress.current / syncProgress.total) * 100) : 0;
+
   return (
     <>
       <Button
@@ -129,6 +246,103 @@ export function SyncButton({ className, variant = "ghost", children, iconOnly = 
         {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" /> : <RefreshCw className="h-3.5 w-3.5 shrink-0" />}
         {children}
       </Button>
+
+      {/* ── Sync Progress Overlay ─────────────────────────────── */}
+      {showSyncOverlay && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in-up">
+          <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl w-full max-w-md shadow-2xl shadow-black/40 overflow-hidden">
+            {/* Header glow */}
+            <div className={`h-1 w-full transition-all duration-500 ${
+              syncPhase === "error" ? "bg-red-500" :
+              syncPhase === "done" ? "bg-emerald-500" :
+              "bg-gradient-to-r from-emerald-500 via-cyan-400 to-emerald-500 animate-gradient-x"
+            }`} />
+
+            <div className="p-6 space-y-5">
+              {/* Icon + Status */}
+              <div className="flex items-start gap-4">
+                <div className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-300 ${
+                  syncPhase === "error" ? "bg-red-950/40 border border-red-900/50" :
+                  syncPhase === "done" ? "bg-emerald-950/40 border border-emerald-900/50" :
+                  "bg-zinc-900 border border-zinc-800"
+                }`}>
+                  {syncPhase === "error" ? (
+                    <AlertCircle className="h-5 w-5 text-red-400" />
+                  ) : syncPhase === "done" ? (
+                    <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                  ) : syncPhase === "scanning" ? (
+                    <Mail className="h-5 w-5 text-cyan-400 animate-pulse" />
+                  ) : syncPhase === "processing" ? (
+                    <FileText className="h-5 w-5 text-emerald-400 animate-pulse" />
+                  ) : (
+                    <Loader2 className="h-5 w-5 text-zinc-400 animate-spin" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-[15px] font-semibold text-zinc-100 leading-tight">
+                    {syncPhase === "done" ? "Sync Complete" :
+                     syncPhase === "error" ? "Sync Failed" :
+                     "Syncing Receipts"}
+                  </h3>
+                  <p className="text-[13px] text-zinc-400 mt-1 leading-snug truncate">
+                    {syncStatus}
+                  </p>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              {syncPhase === "processing" && syncProgress.total > 0 && (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-zinc-500">{syncProgress.current} of {syncProgress.total} emails</span>
+                    <span className="text-zinc-400 font-medium">{progressPct}%</span>
+                  </div>
+                  <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 to-cyan-400 rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Scanning animation */}
+              {syncPhase === "scanning" && (
+                <div className="space-y-2">
+                  <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                    <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-cyan-400 to-transparent rounded-full animate-shimmer" />
+                  </div>
+                </div>
+              )}
+
+              {/* Counters */}
+              {(syncProgress.synced > 0 || syncProgress.skipped > 0 || syncPhase === "done") && (
+                <div className="flex gap-3">
+                  <div className="flex-1 bg-emerald-950/20 border border-emerald-900/40 rounded-lg p-3 text-center">
+                    <p className="text-[20px] font-bold text-emerald-400 leading-none">{syncProgress.synced}</p>
+                    <p className="text-[10px] text-emerald-500/70 uppercase tracking-wider mt-1 font-medium">New rides</p>
+                  </div>
+                  <div className="flex-1 bg-zinc-900/40 border border-zinc-800 rounded-lg p-3 text-center">
+                    <p className="text-[20px] font-bold text-zinc-400 leading-none">{syncProgress.skipped}</p>
+                    <p className="text-[10px] text-zinc-600 uppercase tracking-wider mt-1 font-medium">Already synced</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Connecting state */}
+              {syncPhase === "connecting" && (
+                <div className="flex items-center justify-center gap-2 py-2">
+                  <div className="flex gap-1">
+                    <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Date range picker dialog */}
       <AlertDialog open={showDatePicker} onOpenChange={setShowDatePicker}>
