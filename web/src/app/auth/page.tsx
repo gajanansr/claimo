@@ -29,12 +29,17 @@ function AuthContent() {
   const [loadingGoogle, setGoogle]    = useState(false);
   const [loadingEmail,  setEmailLoad] = useState(false);
   const [error,         setError]     = useState<string | null>(null);
+  const [notice,        setNotice]    = useState<string | null>(null);
 
-  // Pick up ?error= from OAuth callback failures
+  // Pick up ?error= from OAuth callback failures and ?reason= notices
   useEffect(() => {
     const e = params.get("error");
     if (e) {
       setTimeout(() => setError("Sign-in failed. Please try again."), 0);
+    }
+    const reason = params.get("reason");
+    if (reason === "gmail_expired") {
+      setTimeout(() => setNotice("Your Gmail connection expired. Sign in with Google again to keep syncing."), 0);
     }
   }, [params]);
 
@@ -142,6 +147,14 @@ function AuthContent() {
                 <div className="flex items-center gap-2 bg-red-950/30 border border-red-900/50 text-red-400 text-[12px] px-3 py-2 rounded-lg">
                   <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                   {error}
+                </div>
+              )}
+
+              {/* Notice banner (e.g. Gmail token expired) */}
+              {notice && !error && (
+                <div className="flex items-center gap-2 bg-amber-950/20 border border-amber-900/40 text-amber-300/90 text-[12px] px-3 py-2 rounded-lg">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                  {notice}
                 </div>
               )}
 

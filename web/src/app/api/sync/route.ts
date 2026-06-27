@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { google } from "googleapis";
 import * as cheerio from "cheerio";
 import { haversineMeters } from "@/lib/haversine";
+import { parseRapidoReceipt } from "@/lib/rapido-parser";
 
 // Server-side geocoding helper (uses private API key)
 async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
@@ -277,6 +278,8 @@ export async function POST(request: Request) {
           }
 
           const insertedReceiptIds: string[] = [];
+          // Per-receipt locations to geocode/tag after insert (correct for multi-PDF emails).
+          const pendingTags: { id: string; from: string; to: string }[] = [];
 
           console.log(`\n--- Processing Email: ${subject} ---`);
           console.log(`Service: ${service}, Attachments: ${pdfAttachments.length}`);
@@ -284,27 +287,31 @@ export async function POST(request: Request) {
           if (pdfAttachments.length > 0 && service === "rapido") {
             console.log(`-> Processing ${pdfAttachments.length} Rapido PDF(s)`);
 
-            const { data: alreadyStored } = await supabase
-              .from("receipts")
-              .select("gmail_message_id")
-              .like("gmail_message_id", `${msg.id}-%`);
+            // Pre-skip already-synced rides without downloading: the ride_id is in the
+            // attachment filename (e.g. RECEIPT_RD123.pdf), so we can check the DB first.
+            const filenameRideIds = pdfAttachments
+              .map((a) => a.filename.match(/\bRD\d{6,}\b/)?.[0])
+              .filter((x): x is string => !!x);
 
-            const storedIndices = new Set(
-              (alreadyStored || []).map((r) => {
-                const parts = String(r.gmail_message_id).split("-");
-                return parseInt(parts[parts.length - 1], 10);
-              }).filter((n) => !isNaN(n))
-            );
-
-            console.log(`-> Already stored ${storedIndices.size} PDF(s) from this email`);
+            let alreadySyncedRideIds = new Set<string>();
+            if (filenameRideIds.length > 0) {
+              const { data: existing } = await supabase
+                .from("receipts")
+                .select("ride_id")
+                .eq("user_id", user.id)
+                .in("ride_id", filenameRideIds);
+              alreadySyncedRideIds = new Set((existing || []).map((r) => r.ride_id as string));
+            }
 
             for (let i = 0; i < pdfAttachments.length; i++) {
               const att = pdfAttachments[i];
 
               send({ type: "pdf_progress", pdfIndex: i + 1, pdfTotal: pdfAttachments.length, subject });
 
-              if (storedIndices.has(i)) {
-                console.log(`-> PDF [${i}/${pdfAttachments.length}] "${att.filename}" — already stored, skipping`);
+              // Skip download entirely if this ride_id (from filename) is already synced.
+              const filenameRideId = att.filename.match(/\bRD\d{6,}\b/)?.[0];
+              if (filenameRideId && alreadySyncedRideIds.has(filenameRideId)) {
+                console.log(`-> PDF [${i}/${pdfAttachments.length}] "${att.filename}" — already synced (${filenameRideId}), skipping`);
                 skippedCount++;
                 send({ type: "skipped" });
                 continue;
@@ -335,77 +342,50 @@ export async function POST(request: Request) {
 
                 const pdfParse = require("pdf-parse/lib/pdf-parse.js");
                 const pdfData = await pdfParse(pdfBuffer);
-                const pdfText = pdfData.text;
 
-                console.log(`-> PDF [${i}] Extracted text (first 200 chars): ${pdfText.substring(0, 200).replace(/\n/g, " ")}`);
+                // ── Parse the receipt (ride_id, amount, date, pickup, drop) ──
+                const parsed = parseRapidoReceipt(pdfData.text);
 
-                const pdfAmountMatch = pdfText.match(/(?:Total\s*(?:Fare|Amount|Bill|Charges)?)[:\s]*(?:₹|Rs\.?|INR)?\s*([0-9,]+(?:\.[0-9]{2})?)/i)
-                  || pdfText.match(/(?:Grand Total)[:\s]*(?:₹|Rs\.?|INR)?\s*([0-9,]+(?:\.[0-9]{2})?)/i)
-                  || pdfText.match(/(?:₹|Rs\.?|INR)\s*([0-9,]+\.[0-9]{2})/i)
-                  || pdfText.match(/(?:₹|Rs\.?|INR)\s*([0-9,]+)/i)
-                  || pdfText.match(/(?:Amount|Total|Fare)[:\s\S]{1,30}?([0-9,]+\.[0-9]{2})/i);
+                // Ride ID also appears in the attachment filename (e.g. RECEIPT_RD123.pdf);
+                // fall back to that if the text extraction missed it.
+                const rideId = parsed.rideId
+                  ?? (att.filename.match(/\bRD\d{6,}\b/)?.[0] ?? null);
 
-                let parsedAmount = pdfAmountMatch ? parseFloat(pdfAmountMatch[1].replace(/,/g, "")) : 0;
-
-                if (parsedAmount === 0 && pdfAttachments.length === 1) {
-                  parsedAmount = amount;
-                }
-
-                console.log(`-> PDF [${i}] Amount: ₹${parsedAmount} (match: ${pdfAmountMatch ? pdfAmountMatch[0].trim() : 'none'})`);
-
+                let parsedAmount = parsed.amount;
+                if (parsedAmount === 0 && pdfAttachments.length === 1) parsedAmount = amount;
                 if (parsedAmount === 0) {
                   console.log(`-> PDF [${i}] Skipped — zero amount`);
                   continue;
                 }
 
-                // ── Extract date from PDF text ──
-                // Try multiple date formats common in Indian ride receipts
-                const dateMatch = pdfText.match(/(\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})/i)          // "16 Jun 2026"
-                  || pdfText.match(/(\d{1,2}[\s\-./]+[A-Za-z]{3,9}[\s\-./]+\d{4})/i)            // "16-Jun-2026"
-                  || pdfText.match(/([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/i)                      // "Jun 16, 2026"
-                  || pdfText.match(/(\d{2}[\/\-]\d{2}[\/\-]\d{4})/i)                             // "16/06/2026" or "16-06-2026"
-                  || pdfText.match(/(\d{4}[\/\-]\d{2}[\/\-]\d{2})/i);                            // "2026-06-16"
+                // trip_date is a DATE column; parser yields a tz-stable "YYYY-MM-DD".
+                // Fall back to the email date only if the PDF had no parseable date.
+                const parsedDate = parsed.tripDate ?? tripDate.substring(0, 10);
 
-                let parsedDate = tripDate;
-                if (dateMatch) {
-                  const d = new Date(dateMatch[1]);
-                  if (!isNaN(d.getTime())) {
-                    // Normalize to date-only (YYYY-MM-DDT00:00:00.000Z) for reliable dedup
-                    parsedDate = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
+                // Locations are positional in the PDF (no Pickup/Drop labels).
+                // For single-PDF emails, fall back to the HTML-parsed body if needed.
+                const pdfFrom = parsed.pickup
+                  ?? (pdfAttachments.length === 1 && fromLocation !== "Unknown Location" ? fromLocation : "Unknown Location");
+                const pdfTo = parsed.drop
+                  ?? (pdfAttachments.length === 1 && toLocation !== "Unknown Location" ? toLocation : "Unknown Location");
+
+                console.log(`-> PDF [${i}] ride_id=${rideId} ₹${parsedAmount} ${parsedDate} | ${pdfFrom} -> ${pdfTo}`);
+
+                // ── Deduplicate by ride_id (the stable natural key) ──
+                if (rideId) {
+                  const { data: existingRide } = await supabase
+                    .from("receipts")
+                    .select("id")
+                    .eq("user_id", user.id)
+                    .eq("ride_id", rideId)
+                    .maybeSingle();
+
+                  if (existingRide) {
+                    console.log(`-> PDF [${i}] Skipped — duplicate ride_id ${rideId}`);
+                    skippedCount++;
+                    send({ type: "skipped" });
+                    continue;
                   }
-                }
-                console.log(`-> PDF [${i}] Date: ${parsedDate} (raw match: ${dateMatch ? dateMatch[1] : 'none — using email date'})`);
-                console.log(`-> PDF [${i}] Full text for debug: ${pdfText.substring(0, 500).replace(/\n/g, " | ")}`);
-
-                // ── Extract locations from PDF text ──
-                // For Rapido, the PDF is completely unstructured so locations might not have 'Pickup' labels.
-                // If it's a single receipt email, we inherit the precise locations from the parsed HTML body!
-                let pdfFrom = pdfAttachments.length === 1 && fromLocation !== "Unknown Location" ? fromLocation : "Unknown Location";
-                let pdfTo = pdfAttachments.length === 1 && toLocation !== "Unknown Location" ? toLocation : "Unknown Location";
-
-                const pickupMatch = pdfText.match(/(?:Pickup|Pick[\s-]?up|Pickup Location|Boarding Point)[:\s]+([^\n]{5,120})/i);
-                const dropMatch = pdfText.match(/(?:Drop|Drop[\s-]?off|Drop Location|Alighting Point|Destination)[:\s]+([^\n]{5,120})/i);
-                if (pickupMatch) pdfFrom = pickupMatch[1].replace(/\s+/g, " ").trim().substring(0, 120);
-                if (dropMatch) pdfTo = dropMatch[1].replace(/\s+/g, " ").trim().substring(0, 120);
-
-                // ── Deduplicate ──
-                // Compare by amount + calendar date only (strip time), so the same ride
-                // from an individual email and a bulk receipt email is caught as a dupe.
-                const dedupDate = parsedDate.substring(0, 10); // "YYYY-MM-DD"
-                const { data: duplicates } = await supabase
-                  .from("receipts")
-                  .select("id")
-                  .eq("user_id", user.id)
-                  .eq("service", "rapido")
-                  .eq("amount", parsedAmount)
-                  .gte("trip_date", `${dedupDate}T00:00:00.000Z`)
-                  .lt("trip_date", `${dedupDate}T23:59:59.999Z`);
-
-                if (duplicates && duplicates.length > 0) {
-                  console.log(`-> PDF [${i}] Skipped — duplicate ride (₹${parsedAmount} on ${dedupDate})`);
-                  skippedCount++;
-                  send({ type: "skipped" });
-                  continue;
                 }
 
                 const uniqueMsgId = `${msg.id}-${i}`;
@@ -413,6 +393,7 @@ export async function POST(request: Request) {
                 const insertResult = await supabase.from("receipts").insert({
                   user_id: user.id,
                   service,
+                  ride_id: rideId,
                   amount: parsedAmount,
                   currency: "INR",
                   trip_date: parsedDate,
@@ -425,7 +406,15 @@ export async function POST(request: Request) {
                 }).select("id").single();
 
                 if (insertResult.error) {
-                  console.error(`-> PDF [${i}] Insert error:`, insertResult.error.message);
+                  // 23505 = unique_violation: a concurrent/duplicate ride_id slipped past
+                  // the check above. Treat as a skip rather than an error.
+                  if (insertResult.error.code === "23505") {
+                    console.log(`-> PDF [${i}] Skipped — ride_id ${rideId} already exists (unique constraint)`);
+                    skippedCount++;
+                    send({ type: "skipped" });
+                  } else {
+                    console.error(`-> PDF [${i}] Insert error:`, insertResult.error.message);
+                  }
                   continue;
                 }
 
@@ -448,6 +437,8 @@ export async function POST(request: Request) {
                   }
 
                   insertedReceiptIds.push(receiptId);
+                  // Per-PDF locations so multi-PDF (bulk) emails tag each ride correctly.
+                  pendingTags.push({ id: receiptId, from: pdfFrom, to: pdfTo });
                   syncedCount++;
                   send({ type: "synced" });
                 }
@@ -467,16 +458,18 @@ export async function POST(request: Request) {
               continue;
             }
 
-            const { data: duplicate } = await supabase
+            // Use a count query (not .single(), which errors on >1 rows and would
+            // then let a duplicate slip through and amplify).
+            const { data: duplicates } = await supabase
               .from("receipts")
               .select("id")
               .eq("user_id", user.id)
               .eq("service", service)
               .eq("amount", amount)
               .eq("trip_date", tripDate)
-              .single();
+              .limit(1);
 
-            if (duplicate) {
+            if (duplicates && duplicates.length > 0) {
               skippedCount++;
               send({ type: "skipped" });
               continue;
@@ -498,54 +491,57 @@ export async function POST(request: Request) {
 
             if (!insertResult.error && insertResult.data?.id) {
               insertedReceiptIds.push(insertResult.data.id);
+              pendingTags.push({ id: insertResult.data.id, from: fromLocation, to: toLocation });
               syncedCount++;
               send({ type: "synced" });
             }
           }
 
-          // ── Location tagging ───────────────────────────────────────
-          if (insertedReceiptIds.length > 0) {
+          // ── Location tagging (per receipt) ─────────────────────────
+          if (pendingTags.length > 0) {
             const { data: userLocations } = await supabase
               .from("user_locations")
               .select("*")
               .eq("user_id", user.id);
 
             if (userLocations && userLocations.length > 0) {
-              const [fromCoords, toCoords] = await Promise.all([
-                geocodeAddress(fromLocation),
-                geocodeAddress(toLocation),
-              ]);
+              for (const tag of pendingTags) {
+                const [fromCoords, toCoords] = await Promise.all([
+                  geocodeAddress(tag.from),
+                  geocodeAddress(tag.to),
+                ]);
 
-              let locationTag: string | null = null;
-              let matchedFrom: { label: string } | null = null;
-              let matchedTo: { label: string } | null = null;
+                let matchedFrom: { label: string } | null = null;
+                let matchedTo: { label: string } | null = null;
 
-              for (const loc of userLocations) {
-                if (fromCoords) {
-                  const dist = haversineMeters(fromCoords.lat, fromCoords.lng, loc.lat, loc.lng);
-                  if (dist <= loc.radius_meters) matchedFrom = loc;
+                for (const loc of userLocations) {
+                  if (fromCoords) {
+                    const dist = haversineMeters(fromCoords.lat, fromCoords.lng, loc.lat, loc.lng);
+                    if (dist <= loc.radius_meters) matchedFrom = loc;
+                  }
+                  if (toCoords) {
+                    const dist = haversineMeters(toCoords.lat, toCoords.lng, loc.lat, loc.lng);
+                    if (dist <= loc.radius_meters) matchedTo = loc;
+                  }
                 }
-                if (toCoords) {
-                  const dist = haversineMeters(toCoords.lat, toCoords.lng, loc.lat, loc.lng);
-                  if (dist <= loc.radius_meters) matchedTo = loc;
+
+                let locationTag: string | null = null;
+                if (matchedFrom && matchedTo) {
+                  locationTag = `${matchedFrom.label} → ${matchedTo.label}`;
+                } else if (matchedFrom) {
+                  locationTag = `From ${matchedFrom.label}`;
+                } else if (matchedTo) {
+                  locationTag = `To ${matchedTo.label}`;
                 }
-              }
 
-              if (matchedFrom && matchedTo) {
-                locationTag = `${matchedFrom.label} → ${matchedTo.label}`;
-              } else if (matchedFrom) {
-                locationTag = `From ${matchedFrom.label}`;
-              } else if (matchedTo) {
-                locationTag = `To ${matchedTo.label}`;
-              }
+                const updatePayload: Record<string, unknown> = {};
+                if (fromCoords) { updatePayload.from_lat = fromCoords.lat; updatePayload.from_lng = fromCoords.lng; }
+                if (toCoords) { updatePayload.to_lat = toCoords.lat; updatePayload.to_lng = toCoords.lng; }
+                if (locationTag) updatePayload.location_tag = locationTag;
 
-              const updatePayload: Record<string, unknown> = {};
-              if (fromCoords) { updatePayload.from_lat = fromCoords.lat; updatePayload.from_lng = fromCoords.lng; }
-              if (toCoords) { updatePayload.to_lat = toCoords.lat; updatePayload.to_lng = toCoords.lng; }
-              if (locationTag) updatePayload.location_tag = locationTag;
-
-              if (Object.keys(updatePayload).length > 0) {
-                await supabase.from("receipts").update(updatePayload).in("id", insertedReceiptIds);
+                if (Object.keys(updatePayload).length > 0) {
+                  await supabase.from("receipts").update(updatePayload).eq("id", tag.id);
+                }
               }
             }
           }
@@ -555,8 +551,17 @@ export async function POST(request: Request) {
         controller.close();
       } catch (error: unknown) {
         console.error("Sync error:", error);
-        if (error && typeof error === 'object' && 'code' in error && error.code === 401) {
-          send({ type: "error", message: "Google token expired. Please sign in again." });
+        // Detect an expired/invalid Gmail token from googleapis errors, which surface
+        // the 401 as either `.code` or `.response.status`.
+        const status =
+          (error as { code?: number })?.code ??
+          (error as { response?: { status?: number } })?.response?.status;
+        if (status === 401) {
+          send({
+            type: "error",
+            code: "auth_expired",
+            message: "Your Gmail connection expired. Please reconnect.",
+          });
         } else {
           send({ type: "error", message: error instanceof Error ? error.message : "Internal Error" });
         }

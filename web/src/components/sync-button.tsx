@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Loader2, Calendar, CheckCircle2, AlertCircle, Mail, FileText } from "lucide-react";
+import { RefreshCw, Loader2, Calendar, CheckCircle2, AlertCircle, Mail, FileText, Link2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,6 +16,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 const FETCH_OPTIONS = [
   { label: "All rides", value: "all" },
@@ -57,9 +64,21 @@ export function SyncButton({ className, variant = "ghost", children, iconOnly = 
   const [customDate, setCustomDate] = useState("");
   const [showSyncOverlay, setShowSyncOverlay] = useState(false);
   const [syncStatus, setSyncStatus] = useState("Connecting to Gmail...");
-  const [syncPhase, setSyncPhase] = useState<"connecting" | "scanning" | "processing" | "done" | "error">("connecting");
+  const [syncPhase, setSyncPhase] = useState<"connecting" | "scanning" | "processing" | "done" | "error" | "expired">("connecting");
   const [syncProgress, setSyncProgress] = useState<SyncProgress>({ current: 0, total: 0, synced: 0, skipped: 0 });
+  const [reconnecting, setReconnecting] = useState(false);
   const router = useRouter();
+  const supabase = createClient();
+
+  // Gmail token expired → sign out and send the user back to reconnect.
+  const handleReconnect = async () => {
+    setReconnecting(true);
+    await supabase.auth.signOut();
+    router.push("/auth?reason=gmail_expired");
+  };
+
+  // The overlay must not be dismissable mid-sync; only allow closing once finished.
+  const overlayDismissable = syncPhase === "done" || syncPhase === "error";
 
   const performSync = async (fetchSince: string | null) => {
     try {
@@ -80,12 +99,8 @@ export function SyncButton({ className, variant = "ghost", children, iconOnly = 
 
       if (!res.ok) {
         if (res.status === 401) {
-          setSyncPhase("error");
-          setSyncStatus("Gmail session expired. Redirecting...");
-          setTimeout(() => {
-            setShowSyncOverlay(false);
-            router.push("/auth");
-          }, 1500);
+          setSyncPhase("expired");
+          setSyncStatus("Your Gmail connection expired. Please reconnect to continue.");
           return;
         }
         const data = await res.json().catch(() => ({ error: "Sync failed" }));
@@ -176,9 +191,14 @@ export function SyncButton({ className, variant = "ghost", children, iconOnly = 
                 break;
 
               case "error":
-                setSyncPhase("error");
-                setSyncStatus(event.message || "An error occurred");
-                setTimeout(() => setShowSyncOverlay(false), 3000);
+                if (event.code === "auth_expired" || /expired|reconnect|sign in again/i.test(event.message || "")) {
+                  setSyncPhase("expired");
+                  setSyncStatus(event.message || "Your Gmail connection expired. Please reconnect.");
+                } else {
+                  setSyncPhase("error");
+                  setSyncStatus(event.message || "An error occurred");
+                  setTimeout(() => setShowSyncOverlay(false), 3000);
+                }
                 break;
             }
           } catch {
@@ -247,102 +267,135 @@ export function SyncButton({ className, variant = "ghost", children, iconOnly = 
         {children}
       </Button>
 
-      {/* ── Sync Progress Overlay ─────────────────────────────── */}
-      {showSyncOverlay && (
-        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in-up">
-          <div className="bg-zinc-950 border border-zinc-800/80 rounded-2xl w-full max-w-md shadow-2xl shadow-black/40 overflow-hidden">
-            {/* Header glow */}
-            <div className={`h-1 w-full transition-all duration-500 ${
-              syncPhase === "error" ? "bg-red-500" :
-              syncPhase === "done" ? "bg-emerald-500" :
-              "bg-gradient-to-r from-emerald-500 via-cyan-400 to-emerald-500 animate-gradient-x"
-            }`} />
+      {/* ── Sync Progress Overlay (shadcn Dialog) ─────────────── */}
+      <Dialog
+        open={showSyncOverlay}
+        onOpenChange={(open) => {
+          // Never dismissable mid-sync; only close once finished or failed.
+          if (!open && overlayDismissable) setShowSyncOverlay(false);
+        }}
+        disablePointerDismissal
+      >
+        <DialogContent
+          showCloseButton={overlayDismissable}
+          className="max-w-md gap-0 overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950 p-0 ring-zinc-800/80 max-h-[90dvh]"
+        >
+          {/* Header glow */}
+          <div className={`h-1 w-full transition-all duration-500 ${
+            syncPhase === "error" ? "bg-red-500" :
+            syncPhase === "expired" ? "bg-amber-500" :
+            syncPhase === "done" ? "bg-emerald-500" :
+            "bg-gradient-to-r from-emerald-500 via-cyan-400 to-emerald-500 animate-gradient-x"
+          }`} />
 
-            <div className="p-6 space-y-5">
-              {/* Icon + Status */}
-              <div className="flex items-start gap-4">
-                <div className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-300 ${
-                  syncPhase === "error" ? "bg-red-950/40 border border-red-900/50" :
-                  syncPhase === "done" ? "bg-emerald-950/40 border border-emerald-900/50" :
-                  "bg-zinc-900 border border-zinc-800"
-                }`}>
-                  {syncPhase === "error" ? (
-                    <AlertCircle className="h-5 w-5 text-red-400" />
-                  ) : syncPhase === "done" ? (
-                    <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-                  ) : syncPhase === "scanning" ? (
-                    <Mail className="h-5 w-5 text-cyan-400 animate-pulse" />
-                  ) : syncPhase === "processing" ? (
-                    <FileText className="h-5 w-5 text-emerald-400 animate-pulse" />
-                  ) : (
-                    <Loader2 className="h-5 w-5 text-zinc-400 animate-spin" />
-                  )}
+          <div className="p-6 space-y-5">
+            {/* Icon + Status */}
+            <div className="flex items-start gap-4">
+              <div className={`h-11 w-11 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-300 ${
+                syncPhase === "error" ? "bg-red-950/40 border border-red-900/50" :
+                syncPhase === "expired" ? "bg-amber-950/40 border border-amber-900/50" :
+                syncPhase === "done" ? "bg-emerald-950/40 border border-emerald-900/50" :
+                "bg-zinc-900 border border-zinc-800"
+              }`}>
+                {syncPhase === "error" ? (
+                  <AlertCircle className="h-5 w-5 text-red-400" />
+                ) : syncPhase === "expired" ? (
+                  <Link2 className="h-5 w-5 text-amber-400" />
+                ) : syncPhase === "done" ? (
+                  <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                ) : syncPhase === "scanning" ? (
+                  <Mail className="h-5 w-5 text-cyan-400 animate-pulse" />
+                ) : syncPhase === "processing" ? (
+                  <FileText className="h-5 w-5 text-emerald-400 animate-pulse" />
+                ) : (
+                  <Loader2 className="h-5 w-5 text-zinc-400 animate-spin" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <DialogTitle className="text-[15px] font-semibold text-zinc-100 leading-tight">
+                  {syncPhase === "done" ? "Sync Complete" :
+                   syncPhase === "error" ? "Sync Failed" :
+                   syncPhase === "expired" ? "Reconnect Gmail" :
+                   "Syncing Receipts"}
+                </DialogTitle>
+                <DialogDescription className="text-[13px] text-zinc-400 mt-1 leading-snug">
+                  {syncStatus}
+                </DialogDescription>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            {syncPhase === "processing" && syncProgress.total > 0 && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-zinc-500">{syncProgress.current} of {syncProgress.total} emails</span>
+                  <span className="text-zinc-400 font-medium">{progressPct}%</span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-[15px] font-semibold text-zinc-100 leading-tight">
-                    {syncPhase === "done" ? "Sync Complete" :
-                     syncPhase === "error" ? "Sync Failed" :
-                     "Syncing Receipts"}
-                  </h3>
-                  <p className="text-[13px] text-zinc-400 mt-1 leading-snug truncate">
-                    {syncStatus}
-                  </p>
+                <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-cyan-400 rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${progressPct}%` }}
+                  />
                 </div>
               </div>
+            )}
 
-              {/* Progress bar */}
-              {syncPhase === "processing" && syncProgress.total > 0 && (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-[11px]">
-                    <span className="text-zinc-500">{syncProgress.current} of {syncProgress.total} emails</span>
-                    <span className="text-zinc-400 font-medium">{progressPct}%</span>
-                  </div>
-                  <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-cyan-400 rounded-full transition-all duration-300 ease-out"
-                      style={{ width: `${progressPct}%` }}
-                    />
-                  </div>
+            {/* Scanning animation */}
+            {syncPhase === "scanning" && (
+              <div className="space-y-2">
+                <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
+                  <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-cyan-400 to-transparent rounded-full animate-shimmer" />
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Scanning animation */}
-              {syncPhase === "scanning" && (
-                <div className="space-y-2">
-                  <div className="h-1.5 bg-zinc-900 rounded-full overflow-hidden">
-                    <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-cyan-400 to-transparent rounded-full animate-shimmer" />
-                  </div>
+            {/* Counters */}
+            {(syncProgress.synced > 0 || syncProgress.skipped > 0 || syncPhase === "done") && (
+              <div className="flex gap-3">
+                <div className="flex-1 bg-emerald-950/20 border border-emerald-900/40 rounded-lg p-3 text-center">
+                  <p className="text-[20px] font-bold text-emerald-400 leading-none">{syncProgress.synced}</p>
+                  <p className="text-[10px] text-emerald-500/70 uppercase tracking-wider mt-1 font-medium">New rides</p>
                 </div>
-              )}
+                <div className="flex-1 bg-zinc-900/40 border border-zinc-800 rounded-lg p-3 text-center">
+                  <p className="text-[20px] font-bold text-zinc-400 leading-none">{syncProgress.skipped}</p>
+                  <p className="text-[10px] text-zinc-600 uppercase tracking-wider mt-1 font-medium">Already synced</p>
+                </div>
+              </div>
+            )}
 
-              {/* Counters */}
-              {(syncProgress.synced > 0 || syncProgress.skipped > 0 || syncPhase === "done") && (
-                <div className="flex gap-3">
-                  <div className="flex-1 bg-emerald-950/20 border border-emerald-900/40 rounded-lg p-3 text-center">
-                    <p className="text-[20px] font-bold text-emerald-400 leading-none">{syncProgress.synced}</p>
-                    <p className="text-[10px] text-emerald-500/70 uppercase tracking-wider mt-1 font-medium">New rides</p>
-                  </div>
-                  <div className="flex-1 bg-zinc-900/40 border border-zinc-800 rounded-lg p-3 text-center">
-                    <p className="text-[20px] font-bold text-zinc-400 leading-none">{syncProgress.skipped}</p>
-                    <p className="text-[10px] text-zinc-600 uppercase tracking-wider mt-1 font-medium">Already synced</p>
-                  </div>
+            {/* Connecting state */}
+            {syncPhase === "connecting" && (
+              <div className="flex items-center justify-center gap-2 py-2">
+                <div className="flex gap-1">
+                  <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Connecting state */}
-              {syncPhase === "connecting" && (
-                <div className="flex items-center justify-center gap-2 py-2">
-                  <div className="flex gap-1">
-                    <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <span className="h-1.5 w-1.5 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* Expired → reconnect action */}
+            {syncPhase === "expired" && (
+              <div className="flex flex-col gap-2">
+                <Button
+                  onClick={handleReconnect}
+                  disabled={reconnecting}
+                  className="w-full bg-amber-600 hover:bg-amber-500 text-white border-0 gap-2"
+                >
+                  {reconnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                  {reconnecting ? "Redirecting…" : "Reconnect Gmail"}
+                </Button>
+                <button
+                  onClick={() => setShowSyncOverlay(false)}
+                  className="text-[12px] text-zinc-600 hover:text-zinc-400 transition-colors"
+                >
+                  Not now
+                </button>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {/* Date range picker dialog */}
       <AlertDialog open={showDatePicker} onOpenChange={setShowDatePicker}>
