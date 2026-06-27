@@ -410,27 +410,40 @@ export function SyncButton({ className, variant = "ghost", children, iconOnly = 
             </AlertDialogDescription>
           </AlertDialogHeader>
 
-          <div className="flex flex-col gap-2 my-2">
-            {FETCH_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setSelectedOption(opt.value)}
-                className={`w-full text-left px-4 py-2.5 rounded-lg text-[13px] font-medium transition-all border
-                  ${selectedOption === opt.value
-                    ? "bg-emerald-950/40 border-emerald-700/60 text-emerald-300"
-                    : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
-                  }`}
-              >
-                {opt.label}
-              </button>
-            ))}
+          <div className="my-2 space-y-2">
+            <div className="grid grid-cols-2 gap-1.5">
+              {FETCH_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setSelectedOption(opt.value)}
+                  className={`relative px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all border text-left
+                    ${opt.value === "all" ? "col-span-2" : ""}
+                    ${selectedOption === opt.value
+                      ? "bg-emerald-950/40 border-emerald-700/60 text-emerald-300"
+                      : "border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+                    }`}
+                >
+                  {opt.label}
+                  {selectedOption === opt.value && (
+                    <CheckCircle2 className="absolute top-2 right-2 h-3.5 w-3.5 text-emerald-400" />
+                  )}
+                </button>
+              ))}
+            </div>
+
             {selectedOption === "custom" && (
-              <input
-                type="date"
-                value={customDate}
-                onChange={(e) => setCustomDate(e.target.value)}
-                className="mt-1 w-full bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-emerald-500/50 transition-colors"
-              />
+              <div className="space-y-1.5 pt-1">
+                <label className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+                  Sync receipts since
+                </label>
+                <input
+                  type="date"
+                  value={customDate}
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setCustomDate(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-lg px-3 py-2 text-[13px] outline-none focus:border-emerald-500/50 transition-colors"
+                />
+              </div>
             )}
           </div>
 

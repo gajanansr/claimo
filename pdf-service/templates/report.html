@@ -4,301 +4,141 @@
   <meta charset="utf-8">
   <title>Claimo Expense Report</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
     @page {
       size: A4;
-      margin: 1.5cm;
+      margin: 1.6cm;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
       color: #18181b;
       background: #ffffff;
-      font-size: 13px;
+      font-size: 12px;
       line-height: 1.5;
     }
 
     /* ─── HEADER ─────────────────────────────────────────────── */
     .header {
-      background: #09090b;
-      color: #ffffff;
-      padding: 22px 28px;
-      border-radius: 10px;
-      margin-bottom: 22px;
       display: flex;
-      align-items: center;
+      align-items: flex-end;
       justify-content: space-between;
+      padding-bottom: 14px;
+      border-bottom: 1.5px solid #18181b;
+      margin-bottom: 18px;
     }
 
-    .header-left {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    .logo-text {
-      font-size: 26px;
-      font-weight: 800;
-      color: #ffffff;
-      letter-spacing: -0.5px;
-    }
-
-    .logo-dot {
-      width: 8px;
-      height: 8px;
-      background: #10b981;
-      border-radius: 50%;
-      display: inline-block;
-      margin-left: 2px;
-      vertical-align: middle;
-      position: relative;
-      top: -9px;
-    }
-
-    .header-right {
-      text-align: right;
-    }
-
-    .header-period {
-      font-size: 15px;
-      font-weight: 600;
-      color: #ffffff;
-      margin-bottom: 2px;
-    }
-
-    .header-generated {
-      font-size: 11px;
-      color: #a1a1aa;
-      font-weight: 400;
-    }
-
-    /* ─── SUMMARY CARDS ──────────────────────────────────────── */
-    .summary-row {
-      display: flex;
-      gap: 14px;
-      margin-bottom: 22px;
-    }
-
-    .summary-card {
-      flex: 1;
-      background: #f4f4f5;
-      border-radius: 8px;
-      padding: 14px 18px;
-      border: 1px solid #e4e4e7;
-    }
-
-    .summary-card-label {
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #71717a;
-      margin-bottom: 5px;
-    }
-
-    .summary-card-value {
-      font-size: 20px;
+    .title {
+      font-size: 19px;
       font-weight: 700;
+      letter-spacing: -0.3px;
       color: #09090b;
     }
 
-    .summary-card.accent {
-      background: #ecfdf5;
-      border-color: #a7f3d0;
+    .brand {
+      font-size: 12px;
+      font-weight: 700;
+      color: #71717a;
+    }
+    .brand-dot {
+      display: inline-block;
+      width: 4px; height: 4px;
+      background: #10b981;
+      border-radius: 50%;
+      margin-left: 1px;
+      vertical-align: baseline;
     }
 
-    .summary-card.accent .summary-card-value {
-      color: #059669;
+    /* ─── META (name / period / generated) ───────────────────── */
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 22px;
+      margin-bottom: 20px;
+    }
+    .meta-item { }
+    .meta-label {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: #a1a1aa;
+      margin-bottom: 2px;
+    }
+    .meta-value {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #27272a;
     }
 
     /* ─── TABLE ──────────────────────────────────────────────── */
-    .section-title {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #71717a;
-      margin-bottom: 8px;
-    }
-
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 24px;
-      border-radius: 8px;
-      overflow: hidden;
-    }
-
-    thead tr {
-      background: #27272a;
+      margin-bottom: 18px;
     }
 
     thead th {
       text-align: left;
-      padding: 10px 13px;
-      font-size: 10px;
+      padding: 7px 8px;
+      font-size: 9px;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.07em;
-      color: #d4d4d8;
-      border: none;
+      color: #a1a1aa;
+      border-bottom: 1px solid #e4e4e7;
     }
-
-    thead th.col-amount {
-      text-align: right;
-    }
-
-    tbody tr {
-      background: #ffffff;
-    }
-
-    tbody tr.row-alt {
-      background: #f4f4f5;
-    }
+    thead th.col-amount { text-align: right; }
 
     tbody td {
-      padding: 10px 13px;
-      font-size: 12.5px;
-      color: #18181b;
-      border-bottom: 1px solid #e4e4e7;
-      vertical-align: middle;
+      padding: 8px 8px;
+      font-size: 11.5px;
+      color: #3f3f46;
+      border-bottom: 1px solid #f4f4f5;
+      vertical-align: top;
     }
-
     tbody td.col-amount {
       text-align: right;
-      font-weight: 700;
+      font-weight: 600;
       color: #09090b;
       white-space: nowrap;
     }
+    .col-date { white-space: nowrap; color: #71717a; }
+    .col-service { font-weight: 600; color: #27272a; text-transform: capitalize; }
+    .col-route .arrow { color: #d4d4d8; margin: 0 4px; }
 
-    .col-date {
-      white-space: nowrap;
-      color: #52525b;
-      font-size: 12px;
-    }
-
-    .col-route {
-      color: #3f3f46;
-    }
-
-    .col-route .route-arrow {
-      color: #a1a1aa;
-      margin: 0 4px;
-    }
-
-    /* ─── SERVICE BADGES ─────────────────────────────────────── */
-    .badge {
-      display: inline-block;
-      padding: 3px 10px;
-      border-radius: 100px;
-      font-size: 11px;
-      font-weight: 600;
-      white-space: nowrap;
-    }
-
-    .badge-uber {
-      background: #27272a;
-      color: #ffffff;
-    }
-
-    .badge-rapido {
-      background: #fbbf24;
-      color: #451a03;
-    }
-
-    .badge-default {
-      background: #e4e4e7;
-      color: #3f3f46;
-      text-transform: capitalize;
-    }
-
-    /* ─── PROOF COLUMN ───────────────────────────────────────── */
-    .proof-link {
-      color: #10b981;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 12px;
-    }
-
-    .proof-email {
-      font-size: 10.5px;
-      color: #a1a1aa;
-      font-style: italic;
-      max-width: 180px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      display: block;
-    }
-
-    /* ─── TOTAL ROW ──────────────────────────────────────────── */
-    .total-row {
+    /* ─── TOTAL ──────────────────────────────────────────────── */
+    .total {
       display: flex;
       justify-content: flex-end;
-      margin-bottom: 32px;
+      align-items: baseline;
+      gap: 14px;
+      padding-top: 4px;
     }
-
-    .total-box {
-      background: #09090b;
-      color: #ffffff;
-      border-radius: 8px;
-      padding: 12px 20px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
     .total-label {
-      font-size: 11px;
-      font-weight: 500;
-      color: #a1a1aa;
+      font-size: 10px;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.08em;
+      color: #71717a;
     }
-
     .total-value {
-      font-size: 18px;
-      font-weight: 800;
-      color: #10b981;
+      font-size: 17px;
+      font-weight: 700;
+      color: #059669;
     }
 
     /* ─── FOOTER ─────────────────────────────────────────────── */
     .footer {
+      margin-top: 26px;
+      padding-top: 10px;
       border-top: 1px solid #e4e4e7;
-      padding-top: 12px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .footer-brand {
-      font-size: 11px;
-      font-weight: 700;
-      color: #27272a;
-      display: flex;
-      align-items: center;
-      gap: 3px;
-    }
-
-    .footer-brand-dot {
-      width: 5px;
-      height: 5px;
-      background: #10b981;
-      border-radius: 50%;
-      display: inline-block;
-      margin-left: 1px;
-    }
-
-    .footer-disclaimer {
-      font-size: 10px;
+      font-size: 9.5px;
       color: #a1a1aa;
+      text-align: center;
     }
   </style>
 </head>
@@ -306,77 +146,49 @@
 
   <!-- HEADER -->
   <div class="header">
-    <div class="header-left">
-      <span class="logo-text">Claimo</span><span class="logo-dot"></span>
-    </div>
-    <div class="header-right">
-      <div class="header-period">
-        Ride Expense Report &mdash;
-        {% set month_names = ["January","February","March","April","May","June","July","August","September","October","November","December"] %}
-        {{ month_names[month - 1] }} {{ year }}
-      </div>
-      <div class="header-generated">Generated {{ generated_date }}</div>
-    </div>
+    <div class="title">Ride Expense Report</div>
+    <div class="brand">Claimo<span class="brand-dot"></span></div>
   </div>
 
-  <!-- SUMMARY CARDS -->
-  <div class="summary-row">
-    <div class="summary-card">
-      <div class="summary-card-label">Total Rides</div>
-      <div class="summary-card-value">{{ ride_count }}</div>
+  <!-- META -->
+  <div class="meta">
+    {% if user_name %}
+    <div class="meta-item">
+      <div class="meta-label">Prepared for</div>
+      <div class="meta-value">{{ user_name }}</div>
     </div>
-    <div class="summary-card accent">
-      <div class="summary-card-label">Total Amount</div>
-      <div class="summary-card-value">{{ total_amount }}</div>
+    {% endif %}
+    <div class="meta-item">
+      <div class="meta-label">Period</div>
+      <div class="meta-value">{{ period }}</div>
     </div>
-    <div class="summary-card">
-      <div class="summary-card-label">Period</div>
-      <div class="summary-card-value">
-        {% set month_names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"] %}
-        {{ month_names[month - 1] }} {{ year }}
-      </div>
+    <div class="meta-item">
+      <div class="meta-label">Generated</div>
+      <div class="meta-value">{{ generated_date }}</div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Total Rides</div>
+      <div class="meta-value">{{ ride_count }}</div>
     </div>
   </div>
 
   <!-- RIDES TABLE -->
-  <div class="section-title">Ride Details</div>
   <table>
     <thead>
       <tr>
         <th>Date</th>
         <th>Service</th>
         <th>Route</th>
-        <th>Proof</th>
         <th class="col-amount">Amount</th>
       </tr>
     </thead>
     <tbody>
       {% for ride in rides %}
-      <tr class="{{ 'row-alt' if loop.index is even else '' }}">
+      <tr>
         <td class="col-date">{{ ride.date }}</td>
-        <td>
-          {% set svc = ride.service | lower %}
-          {% if svc == 'uber' %}
-            <span class="badge badge-uber">Uber</span>
-          {% elif svc == 'rapido' %}
-            <span class="badge badge-rapido">Rapido</span>
-          {% else %}
-            <span class="badge badge-default">{{ ride.service | capitalize }}</span>
-          {% endif %}
-        </td>
+        <td class="col-service">{{ ride.service }}</td>
         <td class="col-route">
-          {{ ride.from_location }}<span class="route-arrow">&rarr;</span>{{ ride.to_location }}
-        </td>
-        <td>
-          {% if ride.has_pdf_attachment %}
-            <span class="proof-link" style="cursor:default;">PDF Attached &darr;</span>
-          {% elif ride.receipt_link %}
-            <a class="proof-link" href="{{ ride.receipt_link }}">View Receipt &rarr;</a>
-          {% elif ride.email_subject %}
-            <span class="proof-email">{{ ride.email_subject }}</span>
-          {% else %}
-            <span style="color:#d4d4d8;">&mdash;</span>
-          {% endif %}
+          {{ ride.from_location }}<span class="arrow">&rarr;</span>{{ ride.to_location }}
         </td>
         <td class="col-amount">{{ ride.amount }}</td>
       </tr>
@@ -385,21 +197,14 @@
   </table>
 
   <!-- TOTAL -->
-  <div class="total-row">
-    <div class="total-box">
-      <span class="total-label">Total Reimbursable</span>
-      <span class="total-value">{{ total_amount }}</span>
-    </div>
+  <div class="total">
+    <span class="total-label">Total Reimbursable</span>
+    <span class="total-value">{{ total_amount }}</span>
   </div>
 
   <!-- FOOTER -->
   <div class="footer">
-    <div class="footer-brand">
-      Claimo<span class="footer-brand-dot"></span>
-    </div>
-    <div class="footer-disclaimer">
-      Generated by Claimo &middot; For reimbursement purposes only
-    </div>
+    Generated by Claimo &middot; For reimbursement purposes only
   </div>
 
 </body>

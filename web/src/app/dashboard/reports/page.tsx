@@ -34,7 +34,7 @@ export default async function ReportsPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-zinc-100 tracking-tight">Reports</h1>
-          <p className="text-zinc-500 text-sm mt-0.5">Generate and download monthly reimbursement PDFs</p>
+          <p className="text-zinc-500 text-sm mt-0.5">Generate and download reimbursement PDFs for any date range</p>
         </div>
         <GenerateReportDialog />
       </div>
@@ -63,7 +63,9 @@ export default async function ReportsPage() {
               {reports.length > 0 ? reports.map((report) => (
                 <TableRow key={report.id} className="border-zinc-900/60 hover:bg-zinc-900/20 transition-colors">
                   <TableCell className="font-semibold text-zinc-200 text-[13px] pl-5 py-3.5">
-                    {months[report.month - 1]} {report.year}
+                    {report.start_date && report.end_date
+                      ? `${format(parseISO(report.start_date), "MMM d")} – ${format(parseISO(report.end_date), "MMM d, yyyy")}`
+                      : `${months[report.month - 1]} ${report.year}`}
                   </TableCell>
                   <TableCell className="text-zinc-400 text-[13px] py-3.5">{report.ride_count}</TableCell>
                   <TableCell className="text-zinc-100 font-semibold text-[13px] py-3.5">₹{Number(report.total_amount).toFixed(2)}</TableCell>

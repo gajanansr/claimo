@@ -21,11 +21,19 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install playwright browser and its system dependencies
+# Chromium is used ONLY to render Uber HTML email receipts faithfully
+# (reimbursement docs must be pixel-identical). It launches lazily at runtime,
+# so Rapido-only reports never spawn it.
 RUN playwright install chromium
 RUN playwright install-deps chromium
 
 COPY . .
+
+# Cut glibc malloc memory retention/fragmentation for threaded Python.
+# Keeps RSS from ratcheting up across requests on long-lived workers.
+ENV MALLOC_ARENA_MAX=2
+ENV MALLOC_TRIM_THRESHOLD_=65536
+ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8080
 

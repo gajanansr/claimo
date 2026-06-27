@@ -10,7 +10,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { month, year, locationTag } = await req.json();
+    const body = await req.json();
+    const { locationTag, mode } = body;
+    // "full" = summary report + receipts; "receipts" = receipts only.
+    const reportMode = mode === "receipts" ? "receipts" : "full";
+
+    // Resolve the date range. Prefer an explicit start/end (inclusive); fall
+    // back to a whole-month range derived from month/year for legacy callers.
+    const pad = (n: number) => String(n).padStart(2, "0");
+    let startDate: string | undefined = body.startDate;
+    let endDate: string | undefined = body.endDate;
+    let month: number = body.month;
+    let year: number = body.year;
+
+    if (startDate && endDate) {
+      // Derive month/year from start for the reports row + listing display.
+      year = parseInt(startDate.slice(0, 4), 10);
+      month = parseInt(startDate.slice(5, 7), 10);
+    } else if (month && year) {
+      startDate = `${year}-${pad(month)}-01`;
+      const lastDay = new Date(year, month, 0).getDate(); // last day of month
+      endDate = `${year}-${pad(month)}-${pad(lastDay)}`;
+    } else {
+      return NextResponse.json({ error: "Provide a date range or month/year" }, { status: 400 });
+    }
 
     // Fetch user tier
     const { data: profile } = await supabase.from("profiles").select("is_pro").eq("id", session.user.id).single();
@@ -27,17 +50,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Free plan limit reached (max 2 reports). Please upgrade to Pro." }, { status: 403 });
       }
 
-      // 2. Check ride count limit for this month (Free: max 5 rides per report)
-      const startDate = `${year}-${month.toString().padStart(2, "0")}-01`;
-      const endDate = month === 12 ? `${year + 1}-01-01` : `${year}-${(month + 1).toString().padStart(2, "0")}-01`;
-      
+      // 2. Check ride count limit for this range (Free: max 5 rides per report)
       let query = supabase
         .from("receipts")
         .select("*", { count: "exact", head: true })
         .eq("user_id", session.user.id)
         .gte("trip_date", startDate)
-        .lt("trip_date", endDate);
-        
+        .lte("trip_date", endDate);
+
       if (locationTag) {
         query = query.ilike("location_tag", `%${locationTag}%`);
       }
@@ -61,6 +81,8 @@ export async function POST(req: NextRequest) {
       user_id: session.user.id,
       month: month,
       year: year,
+      start_date: startDate,
+      end_date: endDate,
       status: "processing",
       location_tag: locationTag || null
     }).select().single();
@@ -85,7 +107,10 @@ export async function POST(req: NextRequest) {
             report_id: report.id,
             month,
             year,
-            location_tag: locationTag || null
+            start_date: startDate,
+            end_date: endDate,
+            location_tag: locationTag || null,
+            mode: reportMode
           })
         });
       } catch (err) {

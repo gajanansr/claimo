@@ -10,28 +10,55 @@ import { toast } from "sonner";
 import { ProPlanDialog } from "./pro-plan-dialog";
 import { createClient } from "@/lib/supabase";
 
-const months = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+type Preset = "this_month" | "last_month" | "last_3_months" | "custom";
+
+const PRESETS: { value: Preset; label: string }[] = [
+  { value: "this_month", label: "This month" },
+  { value: "last_month", label: "Last month" },
+  { value: "last_3_months", label: "Last 3 months" },
+  { value: "custom", label: "Custom range" },
 ];
+
+const pad = (n: number) => String(n).padStart(2, "0");
+const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 export function GenerateReportDialog() {
   const [open, setOpen] = useState(false);
   const [generating, setGen] = useState(false);
-  const [selectedMonth, setMon] = useState(months[new Date().getMonth()]);
-  const [selectedYear, setYear] = useState(new Date().getFullYear().toString());
-  const [locations, setLocations] = useState<{id: string, label: string}[]>([]);
+  const [preset, setPreset] = useState<Preset>("this_month");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [locations, setLocations] = useState<{ id: string; label: string }[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string>("");
+  const [mode, setMode] = useState<"full" | "receipts">("full");
   const [showProPlan, setShowProPlan] = useState(false);
   const [tripCount, setTripCount] = useState<number | null>(null);
   const router = useRouter();
   const supabase = createClient();
 
+  // Resolve the selected preset to an inclusive [start, end] date range.
+  const getRange = (): { start: string; end: string } | null => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    switch (preset) {
+      case "this_month":
+        return { start: ymd(new Date(y, m, 1)), end: ymd(new Date(y, m + 1, 0)) };
+      case "last_month":
+        return { start: ymd(new Date(y, m - 1, 1)), end: ymd(new Date(y, m, 0)) };
+      case "last_3_months":
+        return { start: ymd(new Date(y, m - 2, 1)), end: ymd(new Date(y, m + 1, 0)) };
+      case "custom":
+        return customStart && customEnd ? { start: customStart, end: customEnd } : null;
+    }
+  };
+  const range = getRange();
+
   useEffect(() => {
     if (open) {
       fetch("/api/locations")
-        .then(res => res.json())
-        .then(data => {
+        .then((res) => res.json())
+        .then((data) => {
           if (Array.isArray(data)) setLocations(data);
         })
         .catch(() => {});
@@ -43,57 +70,60 @@ export function GenerateReportDialog() {
     let isMounted = true;
 
     const fetchCount = async () => {
-      setTripCount(null);
+      const r = getRange();
+      if (!r) {
+        if (isMounted) setTripCount(null);
+        return;
+      }
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const monthIndex = months.indexOf(selectedMonth) + 1;
-      const yearNum = parseInt(selectedYear);
-      
-      const startDate = `${yearNum}-${monthIndex.toString().padStart(2, "0")}-01`;
-      let endDate;
-      if (monthIndex === 12) {
-        endDate = `${yearNum + 1}-01-01`;
-      } else {
-        endDate = `${yearNum}-${(monthIndex + 1).toString().padStart(2, "0")}-01`;
-      }
-
       let query = supabase
         .from("receipts")
-        .select("id", { count: "exact" })
+        .select("id", { count: "exact", head: true })
         .eq("user_id", user.id)
-        .gte("trip_date", startDate)
-        .lt("trip_date", endDate);
+        .gte("trip_date", r.start)
+        .lte("trip_date", r.end);
 
       if (selectedLocation) {
         query = query.ilike("location_tag", `%${selectedLocation}%`);
       }
 
       const { count } = await query;
-      if (isMounted) {
-        setTripCount(count || 0);
-      }
+      if (isMounted) setTripCount(count || 0);
     };
 
     fetchCount();
     return () => { isMounted = false; };
-  }, [selectedMonth, selectedYear, selectedLocation, open, supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset, customStart, customEnd, selectedLocation, open, supabase]);
 
   const handleGenerate = async () => {
+    if (!range) {
+      toast.error("Please pick a start and end date.");
+      return;
+    }
+    if (range.start > range.end) {
+      toast.error("Start date must be before end date.");
+      return;
+    }
     setGen(true);
     try {
-      const monthIndex = months.indexOf(selectedMonth) + 1;
-      const bodyData: any = { month: monthIndex, year: parseInt(selectedYear) };
-      if (selectedLocation) bodyData.locationTag = selectedLocation;
+      const bodyData = {
+        startDate: range.start,
+        endDate: range.end,
+        mode,
+        ...(selectedLocation ? { locationTag: selectedLocation } : {}),
+      };
 
       const res = await fetch("/api/reports/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyData)
+        body: JSON.stringify(bodyData),
       });
-      
+
       const data = await res.json();
-      
+
       if (!res.ok) {
         if (res.status === 403) {
           toast.error(data.error);
@@ -103,11 +133,11 @@ export function GenerateReportDialog() {
         }
         return;
       }
-      
-      toast.success(`Report generation for ${selectedMonth} ${selectedYear} started! It will appear shortly.`);
+
+      toast.success("Report generation started! It will appear shortly.");
       setOpen(false);
       router.refresh();
-    } catch (err) {
+    } catch {
       toast.error("Network error occurred.");
     } finally {
       setGen(false);
@@ -125,49 +155,61 @@ export function GenerateReportDialog() {
         <DialogHeader>
           <DialogTitle className="text-[17px] font-bold text-zinc-100">Generate Report</DialogTitle>
           <DialogDescription className="text-zinc-500 text-sm">
-            Choose a month and year to generate your reimbursement PDF.
+            Pick a date range to generate your reimbursement PDF.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 mt-2">
-          {/* Month picker */}
+          {/* Date range presets */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Month</label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {months.map((m) => (
+            <label className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Date Range</label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {PRESETS.map((p) => (
                 <button
-                  key={m}
-                  onClick={() => setMon(m)}
+                  key={p.value}
+                  onClick={() => setPreset(p.value)}
                   className={`px-2 py-1.5 rounded-md text-[12px] font-medium border transition-all
-                    ${selectedMonth === m
+                    ${preset === p.value
                       ? "bg-zinc-100 text-zinc-950 border-zinc-200"
                       : "border-zinc-800 text-zinc-500 hover:text-zinc-200 hover:border-zinc-700"
                     }`}
                 >
-                  {m.slice(0, 3)}
+                  {p.label}
                 </button>
               ))}
             </div>
-          </div>
 
-          {/* Year picker */}
-          <div className="space-y-1.5">
-            <label className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Year</label>
-            <div className="flex gap-1.5">
-              {[(new Date().getFullYear() - 1).toString(), new Date().getFullYear().toString()].map((y) => (
-                <button
-                  key={y}
-                  onClick={() => setYear(y)}
-                  className={`flex-1 py-1.5 rounded-md text-[13px] font-medium border transition-all
-                    ${selectedYear === y
-                      ? "bg-zinc-100 text-zinc-950 border-zinc-200"
-                      : "border-zinc-800 text-zinc-500 hover:text-zinc-200 hover:border-zinc-700"
-                    }`}
-                >
-                  {y}
-                </button>
-              ))}
-            </div>
+            {preset === "custom" ? (
+              <div className="grid grid-cols-2 gap-1.5 pt-1">
+                <div className="space-y-1">
+                  <span className="text-[10px] text-zinc-600">From</span>
+                  <input
+                    type="date"
+                    value={customStart}
+                    max={customEnd || new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-md px-2 py-1.5 text-[12px] outline-none focus:border-emerald-500/50 transition-colors"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <span className="text-[10px] text-zinc-600">To</span>
+                  <input
+                    type="date"
+                    value={customEnd}
+                    min={customStart || undefined}
+                    max={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 text-zinc-200 rounded-md px-2 py-1.5 text-[12px] outline-none focus:border-emerald-500/50 transition-colors"
+                  />
+                </div>
+              </div>
+            ) : (
+              range && (
+                <p className="text-[11px] text-zinc-600 pt-0.5">
+                  {range.start} &rarr; {range.end}
+                </p>
+              )
+            )}
           </div>
 
           {/* Location filter (optional) */}
@@ -200,14 +242,47 @@ export function GenerateReportDialog() {
             </div>
           </div>
 
+          {/* PDF contents toggle */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">PDF Contents</label>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                onClick={() => setMode("full")}
+                className={`px-2 py-2 rounded-md text-[12px] font-medium border transition-all text-left
+                  ${mode === "full"
+                    ? "bg-zinc-100 text-zinc-950 border-zinc-200"
+                    : "border-zinc-800 text-zinc-500 hover:text-zinc-200 hover:border-zinc-700"
+                  }`}
+              >
+                Report + Receipts
+                <span className="block text-[10px] font-normal mt-0.5 text-zinc-600">
+                  Summary page, then receipts
+                </span>
+              </button>
+              <button
+                onClick={() => setMode("receipts")}
+                className={`px-2 py-2 rounded-md text-[12px] font-medium border transition-all text-left
+                  ${mode === "receipts"
+                    ? "bg-zinc-100 text-zinc-950 border-zinc-200"
+                    : "border-zinc-800 text-zinc-500 hover:text-zinc-200 hover:border-zinc-700"
+                  }`}
+              >
+                Receipts only
+                <span className="block text-[10px] font-normal mt-0.5 text-zinc-600">
+                  No summary page
+                </span>
+              </button>
+            </div>
+          </div>
+
           {/* Trip count preview */}
           {tripCount !== null && (
             <div className="flex items-center justify-between px-3 py-2.5 bg-emerald-950/20 border border-emerald-900/40 rounded-lg">
               <span className="text-[12px] font-medium text-emerald-400">
                 {tripCount} {tripCount === 1 ? "trip" : "trips"} found matching criteria
               </span>
-              <Link 
-                href="/dashboard/rides" 
+              <Link
+                href="/dashboard/rides"
                 onClick={() => setOpen(false)}
                 className="text-[11px] font-semibold text-emerald-300 hover:text-emerald-200 flex items-center gap-1 transition-colors"
               >
@@ -218,7 +293,7 @@ export function GenerateReportDialog() {
 
           <Button
             onClick={handleGenerate}
-            disabled={generating}
+            disabled={generating || !range}
             className="w-full bg-zinc-100 hover:bg-zinc-200 disabled:bg-zinc-800 text-zinc-950 disabled:text-zinc-500 font-semibold rounded-lg h-9 text-[13px] transition-all"
           >
             {generating ? (
@@ -229,7 +304,7 @@ export function GenerateReportDialog() {
             ) : (
               <>
                 <FileText className="mr-2 h-3.5 w-3.5" />
-                Generate {selectedMonth.slice(0, 3)} {selectedYear}
+                Generate Report
               </>
             )}
           </Button>
