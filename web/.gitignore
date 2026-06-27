@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local debug dumps (personal receipt data — never commit)
+debug-output/
+debug_*.html
