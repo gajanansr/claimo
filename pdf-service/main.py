@@ -4,7 +4,7 @@ import os
 import tempfile
 import uuid
 from datetime import datetime
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI
 from fastapi.responses import Response
 from pydantic import BaseModel
 from typing import List
@@ -198,6 +198,26 @@ def _get_user_name(user_id: str) -> str:
         return ""
 
 
+def _get_location_address(user_id: str, label: str | None) -> str | None:
+    """Full saved address for a user's location label (e.g. 'Office'), if any."""
+    if not supabase or not label:
+        return None
+    try:
+        res = (
+            supabase.table("user_locations")
+            .select("address")
+            .eq("user_id", user_id)
+            .eq("label", label)
+            .limit(1)
+            .execute()
+        )
+        rows = res.data or []
+        return rows[0].get("address") if rows else None
+    except Exception as exc:
+        print(f"[location] Failed to fetch address for '{label}': {exc}")
+        return None
+
+
 def _merge_all(pages: list[bytes]) -> bytes:
     """Merge a list of PDF byte-strings into one (no separate base page)."""
     if not pages:
@@ -205,10 +225,10 @@ def _merge_all(pages: list[bytes]) -> bytes:
     return _merge_pdfs(pages[0], pages[1:])
 
 
-def generate_pdf_task(req: ReportRequest):
+def generate_pdf_task(req: ReportRequest) -> bool:
     if not supabase:
         print("Error: Supabase credentials not set.")
-        return
+        return False
 
     try:
         month_names = [
@@ -297,6 +317,7 @@ def generate_pdf_task(req: ReportRequest):
             user_name=_get_user_name(req.user_id),
             period=period_label,
             location_filter=req.location_tag,
+            location_full=_get_location_address(req.user_id, req.location_tag),
             generated_date=datetime.now().strftime("%B %d, %Y"),
             rides=formatted_rides,
             total_amount=f"INR {total_amount:.2f}",
@@ -353,18 +374,27 @@ def generate_pdf_task(req: ReportRequest):
         ).eq("id", req.report_id).execute()
 
         print(f"Successfully generated report {req.report_id}")
+        return True
 
     except Exception as e:
         print(f"Failed to generate report {req.report_id}: {str(e)}")
-        supabase.table("reports").update({"status": "failed"}).eq(
-            "id", req.report_id
-        ).execute()
+        try:
+            supabase.table("reports").update({"status": "failed"}).eq(
+                "id", req.report_id
+            ).execute()
+        except Exception as exc:
+            print(f"Also failed to mark report failed: {exc}")
+        return False
 
 
 @app.post("/generate")
-async def generate_report(req: ReportRequest, background_tasks: BackgroundTasks):
-    background_tasks.add_task(generate_pdf_task, req)
-    return {"status": "processing", "report_id": req.report_id}
+def generate_report(req: ReportRequest):
+    # Run synchronously, inside the request, so generation completes while CPU
+    # is allocated. Cloud Run throttles CPU after the response is sent, which
+    # would otherwise kill a post-response BackgroundTask and leave the report
+    # stuck on "processing" forever.
+    ok = generate_pdf_task(req)
+    return {"status": "ready" if ok else "failed", "report_id": req.report_id}
 
 
 # ── Direct (synchronous) report generation ───────────────────────────────────
@@ -452,6 +482,7 @@ def generate_direct(req: DirectReportRequest):
         user_name=_get_user_name(req.user_id),
         period="Selected receipts",
         location_filter=None,
+        location_full=None,
         generated_date=datetime.now().strftime("%B %d, %Y"),
         rides=formatted_rides,
         total_amount=f"INR {total_amount:.2f}",

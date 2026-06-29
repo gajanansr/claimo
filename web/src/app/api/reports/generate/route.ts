@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
+// The pdf-service now generates synchronously; allow time for it to finish.
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient();
@@ -94,32 +97,46 @@ export async function POST(req: NextRequest) {
       throw error;
     }
 
-    // 2. Trigger external FastAPI service (non-blocking if possible, but we just await the quick request)
+    // 2. Trigger the PDF service. It generates synchronously and returns the
+    //    outcome, so we know whether it actually succeeded (rather than leaving
+    //    the report stuck on "processing" if the service is down or crashes).
     const pdfServiceUrl = process.env.PDF_SERVICE_URL;
-    
-    if (pdfServiceUrl) {
-      try {
-        await fetch(`${pdfServiceUrl}/generate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            user_id: session.user.id,
-            report_id: report.id,
-            month,
-            year,
-            start_date: startDate,
-            end_date: endDate,
-            location_tag: locationTag || null,
-            mode: reportMode
-          })
-        });
-      } catch (err) {
-        console.error("Failed to trigger PDF service:", err);
+
+    if (!pdfServiceUrl) {
+      console.error("PDF_SERVICE_URL not set — cannot generate report.");
+      await supabase.from("reports").update({ status: "failed" }).eq("id", report.id);
+      return NextResponse.json({ error: "PDF service not configured" }, { status: 500 });
+    }
+
+    try {
+      const pdfRes = await fetch(`${pdfServiceUrl}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: session.user.id,
+          report_id: report.id,
+          month,
+          year,
+          start_date: startDate,
+          end_date: endDate,
+          location_tag: locationTag || null,
+          mode: reportMode,
+        }),
+      });
+
+      if (!pdfRes.ok) {
+        console.error("PDF service returned", pdfRes.status);
+        await supabase.from("reports").update({ status: "failed" }).eq("id", report.id);
+        return NextResponse.json({ error: "Report generation failed" }, { status: 502 });
       }
-    } else {
-      console.warn("PDF_SERVICE_URL not set. Skipping external generation.");
-      // Just mark it ready for MVP if no backend
-      await supabase.from("reports").update({ status: "ready", pdf_url: "#", total_amount: 0, ride_count: 0 }).eq("id", report.id);
+    } catch (err) {
+      // The pdf-service may still finish server-side (it updates the row itself),
+      // but surface the trigger failure so the report doesn't appear stuck.
+      console.error("Failed to reach PDF service:", err);
+      return NextResponse.json(
+        { error: "Could not reach the report service. It may still finish — check back shortly." },
+        { status: 504 }
+      );
     }
 
     return NextResponse.json({ success: true, report_id: report.id });

@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await request.json();
-  const { label, lat, lng, radius_meters, color, emoji } = body;
+  const { label, lat, lng, radius_meters, color, emoji, address } = body;
 
   if (!label || lat == null || lng == null) {
     return NextResponse.json({ error: "Missing required fields: label, lat, lng" }, { status: 400 });
@@ -33,6 +33,7 @@ export async function POST(request: Request) {
     label,
     lat,
     lng,
+    address: address ?? null,
     radius_meters: radius_meters ?? 100,
     color: color ?? "#10b981",
     emoji: emoji ?? "📍",

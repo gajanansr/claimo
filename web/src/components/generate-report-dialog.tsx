@@ -134,7 +134,7 @@ export function GenerateReportDialog() {
         return;
       }
 
-      toast.success("Report generation started! It will appear shortly.");
+      toast.success("Report generated!");
       setOpen(false);
       router.refresh();
     } catch {

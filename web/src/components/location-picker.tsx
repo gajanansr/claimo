@@ -114,6 +114,7 @@ export function LocationPicker({ open, onClose, onSaved }: LocationPickerProps) 
           label: label.trim(),
           lat: geocodeResult.lat,
           lng: geocodeResult.lng,
+          address: geocodeResult.formattedAddress || address || null,
           radius_meters: radius,
           color: selectedColor,
           emoji: selectedIconId,
