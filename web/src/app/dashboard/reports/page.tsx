@@ -85,10 +85,8 @@ export default async function ReportsPage() {
                   </TableCell>
                   <TableCell className="text-right pr-5 py-3.5">
                     {report.status === "ready" && report.pdf_url ? (
-                      <a 
-                        href={`/api/reports/download?id=${report.id}`} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
+                      <a
+                        href={`/api/reports/download?id=${report.id}`}
                         className="inline-flex items-center justify-center whitespace-nowrap h-7 px-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900 border border-zinc-800 rounded-md transition-all text-xs font-medium"
                       >
                         <Download className="mr-1.5 h-3.5 w-3.5" />
