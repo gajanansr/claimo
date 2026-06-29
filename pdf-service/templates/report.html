@@ -109,6 +109,17 @@
     .col-date { white-space: nowrap; color: #71717a; }
     .col-service { font-weight: 600; color: #27272a; text-transform: capitalize; }
     .col-route .arrow { color: #d4d4d8; margin: 0 4px; }
+    .col-route .route-tag {
+      display: inline-block;
+      margin-top: 3px;
+      font-size: 9.5px;
+      font-weight: 600;
+      color: #059669;
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      border-radius: 4px;
+      padding: 1px 6px;
+    }
 
     /* ─── TOTAL ──────────────────────────────────────────────── */
     .total {
@@ -162,6 +173,12 @@
       <div class="meta-label">Period</div>
       <div class="meta-value">{{ period }}</div>
     </div>
+    {% if location_filter %}
+    <div class="meta-item">
+      <div class="meta-label">Location</div>
+      <div class="meta-value">{{ location_filter }} &middot; to &amp; from</div>
+    </div>
+    {% endif %}
     <div class="meta-item">
       <div class="meta-label">Generated</div>
       <div class="meta-value">{{ generated_date }}</div>
@@ -189,6 +206,7 @@
         <td class="col-service">{{ ride.service }}</td>
         <td class="col-route">
           {{ ride.from_location }}<span class="arrow">&rarr;</span>{{ ride.to_location }}
+          {% if ride.location_tag %}<br><span class="route-tag">{{ ride.location_tag }}</span>{% endif %}
         </td>
         <td class="col-amount">{{ ride.amount }}</td>
       </tr>

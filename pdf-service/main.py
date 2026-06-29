@@ -285,6 +285,7 @@ def generate_pdf_task(req: ReportRequest):
                 "service": r.get("service"),
                 "from_location": r.get("from_location") or "Unknown",
                 "to_location": r.get("to_location") or "Unknown",
+                "location_tag": r.get("location_tag"),
                 "amount": f"{r.get('currency', 'INR')} {r.get('amount')}",
                 "receipt_link": receipt_link,
                 "email_subject": r.get("email_subject"),
@@ -295,6 +296,7 @@ def generate_pdf_task(req: ReportRequest):
         html_out = template.render(
             user_name=_get_user_name(req.user_id),
             period=period_label,
+            location_filter=req.location_tag,
             generated_date=datetime.now().strftime("%B %d, %Y"),
             rides=formatted_rides,
             total_amount=f"INR {total_amount:.2f}",
@@ -434,6 +436,7 @@ def generate_direct(req: DirectReportRequest):
                 "service": r.get("service"),
                 "from_location": r.get("from_location") or "Unknown",
                 "to_location": r.get("to_location") or "Unknown",
+                "location_tag": r.get("location_tag"),
                 "amount": f"{r.get('currency', 'INR')} {r.get('amount')}",
                 "receipt_link": receipt_link,
                 "email_subject": r.get("email_subject"),
@@ -448,6 +451,7 @@ def generate_direct(req: DirectReportRequest):
     html_out = template.render(
         user_name=_get_user_name(req.user_id),
         period="Selected receipts",
+        location_filter=None,
         generated_date=datetime.now().strftime("%B %d, %Y"),
         rides=formatted_rides,
         total_amount=f"INR {total_amount:.2f}",
