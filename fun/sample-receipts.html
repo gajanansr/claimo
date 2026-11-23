@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claimo.fun — Sample Ride Receipt Generator</title>
+<style>
+  :root { --ink:#1b1b1f; --muted:#6b6b76; --line:#e4e4ea; --bg:#f6f6f8; --r1:#5b3df5; --r2:#0f9d76; --stamp:#d42a2a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color:var(--ink); background:var(--bg); }
+  header.app { padding:20px 24px; background:#fff; border-bottom:1px solid var(--line); }
+  header.app h1 { margin:0; font-size:20px; }
+  header.app p { margin:4px 0 0; color:var(--muted); }
+  .controls { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; padding:16px 24px; background:#fff; border-bottom:1px solid var(--line); }
+  .controls label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); font-weight:600; }
+  .controls input, .controls textarea, .controls select { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; color:var(--ink); }
+  .controls textarea { min-height:64px; resize:vertical; }
+  .controls .wide { grid-column:1/-1; }
+  .actions { display:flex; gap:8px; align-items:end; }
+  button { font:inherit; font-weight:600; padding:9px 16px; border-radius:8px; border:0; cursor:pointer; background:var(--ink); color:#fff; }
+  button.ghost { background:#fff; color:var(--ink); border:1px solid var(--line); }
+  main { max-width:900px; margin:0 auto; padding:24px; }
+  .banner { background:#fff3f3; border:1px solid #f3c4c4; color:#8a1c1c; padding:10px 14px; border-radius:8px; font-weight:600; margin-bottom:16px; }
+  .summary { background:#fff; border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:24px; position:relative; overflow:hidden; }
+  .summary h2 { margin:0 0 4px; font-size:18px; }
+  .stats { display:flex; gap:24px; flex-wrap:wrap; margin:12px 0 16px; }
+  .stat b { display:block; font-size:22px; }
+  .stat span { color:var(--muted); font-size:12px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:600; font-size:12px; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  tfoot td { font-weight:700; border-top:2px solid var(--ink); }
+  .receipts { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
+  .receipt { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; position:relative; overflow:hidden; break-inside:avoid; }
+  .receipt .brand { font-weight:800; font-size:18px; letter-spacing:.5px; }
+  .receipt.random1 .brand { color:var(--r1); }
+  .receipt.random2 .brand { color:var(--r2); }
+  .receipt .meta { color:var(--muted); font-size:12px; }
+  .receipt .fare { font-size:26px; font-weight:800; margin:10px 0; }
+  .route { border-left:2px dashed var(--line); margin:10px 0 10px 6px; padding-left:12px; font-size:13px; }
+  .route div { margin:4px 0; }
+  .lines { font-size:12px; }
+  .lines div { display:flex; justify-content:space-between; padding:2px 0; }
+  .stamp { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
+  .stamp span { transform:rotate(-24deg); border:5px solid var(--stamp); color:var(--stamp); opacity:.28; font-weight:900; font-size:54px; letter-spacing:8px; padding:2px 18px; border-radius:8px; }
+  .summary .stamp span { font-size:90px; opacity:.12; }
+  .foot { margin-top:10px; font-size:10px; color:var(--stamp); font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
+  .empty { color:var(--muted); text-align:center; padding:40px; }
+  @media print {
+    header.app, .controls { display:none; }
+    body { background:#fff; }
+    main { max-width:none; padding:0; }
+    .receipts { grid-template-columns:1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<header class="app">
+  <h1>Claimo.fun — Sample Ride Receipt Generator</h1>
+  <p>Generates fictional SAMPLE receipts for two made-up brands (Random1, Random2). For demos and test data only.</p>
+</header>
+
+<section class="controls">
+  <label>Month <input type="month" id="month"></label>
+  <label>From <input type="text" id="from" value="Home, HSR Layout"></label>
+  <label>To <input type="text" id="to" value="Office, Koramangala"></label>
+  <label>Trips per day
+    <select id="trips">
+      <option value="2" selected>2 (to &amp; back)</option>
+      <option value="1">1 (one way)</option>
+    </select>
+  </label>
+  <label>Monthly target (₹) <input type="number" id="target" value="3000" min="100" step="50"></label>
+  <label>Variance ± (₹) <input type="number" id="variance" value="100" min="0" step="10"></label>
+  <label class="wide">Holidays to skip (YYYY-MM-DD, one per line or comma-separated — edit to match your calendar)
+    <textarea id="holidays"></textarea>
+  </label>
+  <div class="actions wide">
+    <button id="gen">Generate</button>
+    <button class="ghost" id="print">Print / Save PDF</button>
+  </div>
+</section>
+
+<main id="out"><div class="empty">Pick a month and hit Generate.</div></main>
+
+<script>
+// Fixed-date holidays plus known 2026 movable ones. Edit in the textarea for other years / your company list.
+const DEFAULT_HOLIDAYS = [
+  "2026-01-26", "2026-03-04", "2026-04-03", "2026-05-01",
+  "2026-08-15", "2026-10-02", "2026-11-08", "2026-12-25"
+];
+
+const $ = id => document.getElementById(id);
+const now = new Date();
+$("month").value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+$("holidays").value = DEFAULT_HOLIDAYS.join("\n");
+
+const rand = (a, b) => a + Math.random() * (b - a);
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const pad = n => String(n).padStart(2, "0");
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const inr = n => "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const rideId = () => "SMPL-" + Array.from({ length: 8 }, () => pick("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")).join("");
+const fmtTime = mins => { const h = Math.floor(mins / 60), m = mins % 60; return `${((h + 11) % 12) + 1}:${pad(m)} ${h < 12 ? "AM" : "PM"}`; };
+
+function workingDays(year, month, holidays) {
+  const days = [];
+  const d = new Date(year, month, 1);
+  while (d.getMonth() === month) {
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6 && !holidays.has(iso(d))) days.push(new Date(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return days;
+}
+
+// Split `total` (in paise) into `n` random positive parts that sum exactly to total.
+function splitAmount(totalPaise, n) {
+  const weights = Array.from({ length: n }, () => rand(0.7, 1.3));
+  const wsum = weights.reduce((a, b) => a + b, 0);
+  const parts = weights.map(w => Math.round((w / wsum) * totalPaise / 100) * 100); // whole rupees
+  let diff = totalPaise - parts.reduce((a, b) => a + b, 0);
+  // Push leftover (paise) onto random rides so the total stays exact.
+  while (diff !== 0) {
+    const i = randInt(0, n - 1);
+    const step = Math.sign(diff) * Math.min(Math.abs(diff), 100);
+    if (parts[i] + step > 1000) { parts[i] += step; diff -= step; }
+  }
+  return parts;
+}
+
+function generate() {
+  const [y, m] = $("month").value.split("-").map(Number);
+  if (!y || !m) return;
+  const from = $("from").value.trim() || "Point A";
+  const to = $("to").value.trim() || "Point B";
+  const trips = Number($("trips").value);
+  const target = Math.max(100, Number($("target").value) || 3000);
+  const variance = Math.max(0, Number($("variance").value) || 0);
+  const holidays = new Set($("holidays").value.split(/[\s,]+/).filter(Boolean));
+
+  const days = workingDays(y, m - 1, holidays);
+  const out = $("out");
+  if (!days.length) { out.innerHTML = '<div class="empty">No working days in this month.</div>'; return; }
+
+  const totalPaise = Math.round(rand(target - variance, target + variance)) * 100;
+  const rides = [];
+  days.forEach(day => {
+    for (let t = 0; t < trips; t++) {
+      const outbound = t === 0;
+      const start = outbound ? randInt(8 * 60 + 15, 9 * 60 + 45) : randInt(17 * 60 + 45, 20 * 60);
+      const duration = randInt(18, 42);
+      rides.push({
+        date: day,
+        brand: Math.random() < 0.5 ? "Random1" : "Random2",
+        pickup: outbound ? from : to,
+        drop: outbound ? to : from,
+        start, end: start + duration, duration,
+        km: rand(5.5, 9.5).toFixed(1),
+        id: rideId(),
+      });
+    }
+  });
+
+  const amounts = splitAmount(totalPaise, rides.length);
+  rides.forEach((r, i) => {
+    r.total = amounts[i] / 100;
+    r.tax = Math.round(r.total * 0.05 / 1.05 * 100) / 100;
+    r.platform = Math.min(5, Math.round(r.total * 0.04 * 100) / 100);
+    r.base = Math.round((r.total - r.tax - r.platform) * 100) / 100;
+  });
+
+  const monthName = new Date(y, m - 1, 1).toLocaleString("en-IN", { month: "long", year: "numeric" });
+  const sum = rides.reduce((a, r) => a + r.total, 0);
+  const byBrand = b => rides.filter(r => r.brand === b).reduce((a, r) => a + r.total, 0);
+  const dateStr = d => d.toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+
+  out.innerHTML = `
+    <div class="banner">SAMPLE DATA — fictional brands, generated randomly. Not a real receipt or expense record.</div>
+    <section class="summary">
+      <div class="stamp"><span>SAMPLE</span></div>
+      <h2>Monthly ride report — ${esc(monthName)}</h2>
+      <div class="meta">${esc(from)} ⇄ ${esc(to)} · weekends and ${holidays.size} listed holidays skipped</div>
+      <div class="stats">
+        <div class="stat"><b>${inr(sum)}</b><span>Total</span></div>
+        <div class="stat"><b>${rides.length}</b><span>Rides</span></div>
+        <div class="stat"><b>${days.length}</b><span>Working days</span></div>
+        <div class="stat"><b>${inr(byBrand("Random1"))}</b><span>Random1</span></div>
+        <div class="stat"><b>${inr(byBrand("Random2"))}</b><span>Random2</span></div>
+      </div>
+      <table>
+        <thead><tr><th>Date</th><th>Brand</th><th>Route</th><th>Time</th><th class="num">Amount</th></tr></thead>
+        <tbody>${rides.map(r => `
+          <tr><td>${dateStr(r.date)}</td><td>${r.brand}</td><td>${esc(r.pickup)} → ${esc(r.drop)}</td>
+          <td>${fmtTime(r.start)}</td><td class="num">${inr(r.total)}</td></tr>`).join("")}
+        </tbody>
+        <tfoot><tr><td colspan="4">Total (SAMPLE)</td><td class="num">${inr(sum)}</td></tr></tfoot>
+      </table>
+    </section>
+    <section class="receipts">${rides.map(r => `
+      <article class="receipt ${r.brand.toLowerCase()}">
+        <div class="stamp"><span>SAMPLE</span></div>
+        <div class="brand">${r.brand}</div>
+        <div class="meta">${dateStr(r.date)} · Ride ${r.id}</div>
+        <div class="fare">${inr(r.total)}</div>
+        <div class="route">
+          <div><b>${fmtTime(r.start)}</b> · ${esc(r.pickup)}</div>
+          <div><b>${fmtTime(r.end)}</b> · ${esc(r.drop)}</div>
+        </div>
+        <div class="meta">${r.km} km · ${r.duration} min</div>
+        <div class="lines">
+          <div><span>Ride fare</span><span>${inr(r.base)}</span></div>
+          <div><span>Platform fee</span><span>${inr(r.platform)}</span></div>
+          <div><span>Taxes</span><span>${inr(r.tax)}</span></div>
+          <div><b>Total</b><b>${inr(r.total)}</b></div>
+        </div>
+        <div class="foot">Sample receipt · fictional brand · not valid for reimbursement</div>
+      </article>`).join("")}
+    </section>`;
+}
+
+$("gen").addEventListener("click", generate);
+$("print").addEventListener("click", () => window.print());
+</script>
+</body>
+</html>
